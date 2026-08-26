@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Truck, ShieldCheck, RotateCcw, Headphones, Star, Quote } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { CircularGallery } from '@/components/CircularGallery';
-import { CurvedLoop } from '@/components/CurvedLoop';
 import { SectionTitle, Button, Spinner, ProductCardSkeleton } from '@/components/ui';
 import { useProducts, useCategories, useBanners } from '@/lib/hooks';
 import { supabase } from '@/lib/supabase';
@@ -18,19 +17,12 @@ export function HomePage() {
   const { banners } = useBanners();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
-  const [announcement, setAnnouncement] = useState('Free shipping on orders over INR 75');
   const categoryGalleryItems = useMemo(
     () => categories.slice(0, 6).filter((cat) => cat.image).map((cat) => ({ image: cat.image as string, text: cat.name, href: `/category/${cat.slug}` })),
     [categories],
   );
   const handleCategoryClick = useCallback((item: { href?: string }) => {
     if (item.href) window.location.href = item.href;
-  }, []);
-
-  useEffect(() => {
-    supabase.from('announcements').select('message').eq('enabled', true).limit(1).maybeSingle().then(({ data }) => {
-      if (data?.message) setAnnouncement(data.message);
-    });
   }, []);
 
   useEffect(() => {
@@ -97,11 +89,6 @@ export function HomePage() {
                 className={`h-1.5 rounded-full transition-all ${i === currentBanner ? 'w-8 bg-white' : 'w-1.5 bg-white/50'}`}
               />
             ))}
-          </div>
-        )}
-        {announcement && (
-          <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 px-3 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] sm:px-6">
-            <CurvedLoop marqueeText={`${announcement}  ✦  `} speed={4} curveAmount={30} direction="left" interactive={false} />
           </div>
         )}
       </section>

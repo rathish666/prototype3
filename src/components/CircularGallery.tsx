@@ -83,6 +83,8 @@ export function CircularGallery({
     let dragStart = 0;
     let dragOrigin = 0;
     let frame = 0;
+    const touchDevice = window.matchMedia('(pointer: coarse)').matches;
+    const easing = touchDevice ? Math.max(scrollEase, 0.18) : scrollEase;
     const resize = () => {
       const screen = { width: container.clientWidth, height: container.clientHeight };
       if (!screen.width || !screen.height) return;
@@ -112,7 +114,7 @@ export function CircularGallery({
       if (Math.abs(nearest.plane.position.x - x) < nearest.plane.scale.x / 2) onItemClick(nearest.item);
     };
     const update = () => {
-      scroll.current = lerp(scroll.current, scroll.target, scrollEase);
+      scroll.current = lerp(scroll.current, scroll.target, easing);
       const direction = scroll.current > scroll.last ? 1 : -1;
       medias.forEach((media) => {
         const x = media.width * media.index - scroll.current - media.extra;

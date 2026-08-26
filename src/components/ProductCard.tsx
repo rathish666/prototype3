@@ -6,7 +6,6 @@ import { useStore } from '@/store/StoreContext';
 import { Badge, ColorSwatch } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { resolveProductImageUrl } from '@/lib/supabase';
-import { ElectricBorder } from '@/components/ElectricBorder';
 
 export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
   const { toggleWishlist, isInWishlist, addToCart, showToast } = useStore();
@@ -26,35 +25,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   return (
     <div className="group animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
       <div className="relative overflow-visible rounded-xl bg-ink-50">
-        {product.best_seller ? (
-          <ElectricBorder color="#000000" speed={1.4} chaos={0.10} borderRadius={14}>
-            <Link to={`/product/${product.id}`} className="block overflow-hidden rounded-xl">
-              <div className="relative aspect-[3/4] overflow-hidden">
-                <img
-                  src={primaryImage || undefined}
-                  alt={product.name}
-                  loading="lazy"
-                  className={cn('h-full w-full object-cover transition-transform duration-700 group-hover:scale-105', outOfStock && 'opacity-60')}
-                />
-                {secondaryImage && (
-                  <img
-                    src={secondaryImage}
-                    alt={product.name}
-                    loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-                  />
-                )}
-              </div>
-            </Link>
-          </ElectricBorder>
-        ) : (
-          <Link to={`/product/${product.id}`} className="block overflow-hidden rounded-xl">
-            <div className="relative aspect-[3/4] overflow-hidden">
-              <img src={primaryImage || undefined} alt={product.name} loading="lazy" className={cn('h-full w-full object-cover transition-transform duration-700 group-hover:scale-105', outOfStock && 'opacity-60')} />
-              {secondaryImage && <img src={secondaryImage} alt={product.name} loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
-            </div>
-          </Link>
-        )}
+        <Link to={`/product/${product.id}`} className="block overflow-hidden rounded-xl">
+          <div className="relative aspect-[3/4] overflow-hidden">
+            <img src={primaryImage || undefined} alt={product.name} loading="lazy" className={cn('h-full w-full object-cover transition-transform duration-700 group-hover:scale-105', outOfStock && 'opacity-60')} />
+            {secondaryImage && <img src={secondaryImage} alt={product.name} loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
+          </div>
+        </Link>
 
         <div className="absolute left-3 top-3 flex flex-col gap-1.5">
           {discount > 0 && <Badge variant="error">-{discount}%</Badge>}
