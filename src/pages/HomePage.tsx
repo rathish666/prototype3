@@ -100,8 +100,8 @@ export function HomePage() {
           </div>
         )}
         {announcement && (
-          <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-white/20 bg-ink-950/55 px-3 py-1 text-white backdrop-blur-sm sm:py-2">
-            <CurvedLoop marqueeText={`${announcement}  ✦  `} speed={3} curveAmount={180} direction="left" interactive />
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 px-3 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] sm:px-6">
+            <CurvedLoop marqueeText={`${announcement}  ✦  `} speed={4} curveAmount={30} direction="left" interactive={false} />
           </div>
         )}
       </section>

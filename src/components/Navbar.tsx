@@ -4,7 +4,7 @@ import { Search, Heart, ShoppingBag, User, Menu, X, ChevronDown } from 'lucide-r
 import { useStore } from '@/store/StoreContext';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import type { Category, Announcement } from '@/types';
+import type { Category } from '@/types';
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -12,7 +12,6 @@ export function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
-  const [announcement, setAnnouncement] = useState<string | null>(null);
   const [shopMenuOpen, setShopMenuOpen] = useState(false);
   const { cartCount, wishlist, customerEmail, customerName } = useStore();
   const navigate = useNavigate();
@@ -32,12 +31,8 @@ export function Navbar() {
 
   useEffect(() => {
     (async () => {
-      const [{ data: cats }, { data: ann }] = await Promise.all([
-        supabase.from('categories').select('*').eq('enabled', true).order('name'),
-        supabase.from('announcements').select('*').eq('enabled', true).limit(1),
-      ]);
+      const { data: cats } = await supabase.from('categories').select('*').eq('enabled', true).order('name');
       setCategories(cats || []);
-      if (ann && ann[0]) setAnnouncement(ann[0].message);
     })();
   }, []);
 
@@ -59,15 +54,6 @@ export function Navbar() {
 
   return (
     <>
-      {/* Announcement bar */}
-      {announcement && (
-        <div className="bg-ink-900 text-white">
-          <div className="mx-auto max-w-7xl px-4 py-2 text-center text-xs font-medium tracking-wide">
-            {announcement}
-          </div>
-        </div>
-      )}
-
       {/* Search overlay */}
       {searchOpen && (
         <div className="fixed inset-0 z-50 bg-white animate-fade-in">

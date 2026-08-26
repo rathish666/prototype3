@@ -40,7 +40,14 @@ export function CircularGallery({
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !items.length) return;
-    const renderer = new Renderer({ alpha: true, antialias: true, dpr: Math.min(window.devicePixelRatio || 1, 2) });
+    let renderer: Renderer;
+    try {
+      const probe = document.createElement('canvas');
+      if (!probe.getContext('webgl') && !probe.getContext('experimental-webgl')) return;
+      renderer = new Renderer({ alpha: true, antialias: true, dpr: Math.min(window.devicePixelRatio || 1, 2) });
+    } catch {
+      return;
+    }
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
     container.appendChild(gl.canvas);

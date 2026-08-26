@@ -11,7 +11,7 @@ interface CurvedLoopProps {
 
 export function CurvedLoop({
   marqueeText = '',
-  speed = 2,
+  speed = 3,
   className = '',
   curveAmount = 400,
   direction = 'left',
