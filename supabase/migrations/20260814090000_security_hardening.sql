@@ -82,13 +82,23 @@ CREATE POLICY "admin_update_product_images" ON product_images FOR UPDATE TO auth
 CREATE POLICY "admin_delete_product_images" ON product_images FOR DELETE TO authenticated USING (is_admin());
 
 -- ============ REVIEWS ============
--- Anyone (including guests) can leave a review; only admins can moderate,
--- edit someone else's review, or delete one.
+-- Guests may submit reviews, but all new entries must land in moderation
+-- and cannot impersonate another identity. Admins are the only actors who
+-- can change a review's published status.
+ALTER TABLE reviews ALTER COLUMN status SET DEFAULT 'pending';
 DROP POLICY IF EXISTS "public_read_approved_reviews" ON reviews;
 CREATE POLICY "public_read_approved_reviews" ON reviews FOR SELECT TO anon, authenticated
   USING (status = 'approved' OR is_admin());
 DROP POLICY IF EXISTS "manage_reviews" ON reviews;
-CREATE POLICY "public_submit_reviews" ON reviews FOR INSERT TO anon, authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "public_submit_reviews" ON reviews;
+CREATE POLICY "public_submit_reviews" ON reviews FOR INSERT TO anon, authenticated
+  WITH CHECK (
+    status = 'pending'
+    AND (
+      auth.role() = 'anon'
+      OR lower(customer_email) = lower(auth.jwt() ->> 'email')
+    )
+  );
 CREATE POLICY "admin_update_reviews" ON reviews FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "admin_delete_reviews" ON reviews FOR DELETE TO authenticated USING (is_admin());
 

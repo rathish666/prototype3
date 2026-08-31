@@ -45,7 +45,15 @@ export function CartPage() {
       setAppliedCoupon(null);
       return;
     }
-    const disc = data.type === 'percentage' ? (cartSubtotal * data.value) / 100 : data.value;
+    if (data.usage_limit != null && Number(data.used_count ?? 0) >= Number(data.usage_limit)) {
+      setCouponError('This coupon has reached its usage limit');
+      setDiscount(0);
+      setAppliedCoupon(null);
+      return;
+    }
+    const rawDiscount = data.type === 'percentage' ? (cartSubtotal * data.value) / 100 : data.value;
+    const maxDiscount = data.max_discount != null ? Number(data.max_discount) : null;
+    const disc = maxDiscount != null ? Math.min(rawDiscount, maxDiscount) : rawDiscount;
     setDiscount(disc);
     setAppliedCoupon(data.code);
     showToast(`Coupon applied: ${data.code}`, 'success');

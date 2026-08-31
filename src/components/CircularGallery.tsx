@@ -132,10 +132,14 @@ export function CircularGallery({
         const media = candidates.reduce((best, candidate) => Math.abs(candidate.plane.position.x) < Math.abs(best.plane.position.x) ? candidate : best);
         const label = labelRefs.current[index];
         if (!label) return;
-        const labelY = media.plane.position.y - media.plane.scale.y / 2 - 0.25;
-        label.style.left = `${50 + (media.plane.position.x / viewport.width) * 100}%`;
-        label.style.top = `${50 - (labelY / viewport.height) * 100}%`;
-        label.style.transform = 'translate(-50%, -50%)';
+
+        const labelOffsetY = media.plane.scale.y * 0.62;
+        const labelLeftPercent = 50 + (media.plane.position.x / viewport.width) * 100;
+        const labelTopPercent = 50 + ((media.plane.position.y + labelOffsetY) / viewport.height) * 100;
+
+        label.style.left = `${labelLeftPercent}%`;
+        label.style.top = `${labelTopPercent}%`;
+        label.style.transform = 'translate(-50%, 0)';
         label.style.opacity = Math.abs(media.plane.position.x) < half + media.plane.scale.x ? '1' : '0';
       });
       renderer.render({ scene, camera });

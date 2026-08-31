@@ -145,9 +145,27 @@ Deno.serve(async (req) => {
         .eq("code", String(couponCode).toUpperCase())
         .eq("enabled", true)
         .maybeSingle();
+
       if (coupon && (!coupon.expires_at || new Date(coupon.expires_at) >= new Date()) && subtotal >= Number(coupon.min_order)) {
-        discount = coupon.type === "percentage" ? subtotal * (Number(coupon.value) / 100) : Math.min(Number(coupon.value), subtotal);
-        appliedCouponCode = coupon.code;
+        const usageLimit = coupon.usage_limit != null ? Number(coupon.usage_limit) : null;
+        const usedCount = Number(coupon.used_count ?? 0);
+        if (usageLimit == null || usedCount < usageLimit) {
+          const rawDiscount = coupon.type === "percentage"
+            ? subtotal * (Number(coupon.value) / 100)
+            : Math.min(Number(coupon.value), subtotal);
+          const maxDiscount = coupon.max_discount != null ? Number(coupon.max_discount) : null;
+          discount = maxDiscount != null ? Math.min(rawDiscount, maxDiscount) : rawDiscount;
+
+          const { error: consumeErr } = await supabase
+            .from("coupons")
+            .update({ used_count: usedCount + 1 })
+            .eq("id", coupon.id)
+            .lt("used_count", usageLimit ?? Number.MAX_SAFE_INTEGER);
+
+          if (!consumeErr) {
+            appliedCouponCode = coupon.code;
+          }
+        }
       }
     }
 

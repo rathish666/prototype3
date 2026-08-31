@@ -1,3 +1,13 @@
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' https://checkout.razorpay.com; connect-src 'self' https://*.supabase.co https://api.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; img-src 'self' data: https://*.supabase.co; style-src 'self' 'unsafe-inline'"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

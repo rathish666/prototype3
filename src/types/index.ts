@@ -120,6 +120,9 @@ export interface Coupon {
   type: string;
   value: number;
   min_order: number;
+  max_discount?: number | null;
+  usage_limit?: number | null;
+  used_count?: number | null;
   expires_at: string | null;
   enabled: boolean;
   created_at: string;

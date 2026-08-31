@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
   title text,
   body text,
-  status text NOT NULL DEFAULT 'approved',
+  status text NOT NULL DEFAULT 'pending',
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
@@ -194,6 +194,9 @@ CREATE TABLE IF NOT EXISTS coupons (
   type text NOT NULL DEFAULT 'percentage',
   value numeric(10,2) NOT NULL,
   min_order numeric(10,2) NOT NULL DEFAULT 0,
+  max_discount numeric(10,2),
+  usage_limit integer,
+  used_count integer NOT NULL DEFAULT 0,
   expires_at date,
   enabled boolean NOT NULL DEFAULT true,
   created_at timestamptz DEFAULT now()

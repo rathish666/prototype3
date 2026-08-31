@@ -3,11 +3,13 @@
 Everything below is dashboard-only — no command line required.
 
 ## What you get
-- Customers pay by Card / UPI / Netbanking (via Razorpay) or choose Cash on Delivery
+- Customers pay by Card / UPI / Netbanking (via Razorpay)
 - Every price is looked up from the live `products` table on the server — a customer's
-  browser can never submit a fake total, for either payment method
-- The instant a payment is confirmed (or a COD order is placed): the order is saved, stock
-  is reduced, and the store owner gets a WhatsApp message with the full order details
+  browser can never submit a fake total
+- The instant a payment is confirmed: the order is saved, stock is reduced, and the store
+  owner gets a WhatsApp message with the full order details
+- Cash-on-delivery is not implemented in this build; do not enable it until a matching
+  server-side order flow is added with the same verification checks as the Razorpay path
 - A backup webhook from Razorpay's own servers guarantees the owner is notified even if the
   customer's browser/internet dies right after paying
 - Admin dashboard (`/admin`, password `admin123` by default — change this before going live,

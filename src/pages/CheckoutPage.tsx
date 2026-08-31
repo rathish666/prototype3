@@ -39,9 +39,13 @@ export function CheckoutPage() {
 
   const shippingFee = shippingMethod === 'Express' ? 25 : cartSubtotal >= 75 ? 0 : 12;
   const discount = couponDetails
-    ? couponDetails.type === 'percentage'
-      ? cartSubtotal * (couponDetails.value / 100)
-      : Math.min(couponDetails.value, cartSubtotal)
+    ? (() => {
+        const rawDiscount = couponDetails.type === 'percentage'
+          ? cartSubtotal * (couponDetails.value / 100)
+          : Math.min(couponDetails.value, cartSubtotal);
+        const cap = couponDetails.max_discount != null ? Number(couponDetails.max_discount) : null;
+        return cap != null ? Math.min(rawDiscount, cap) : rawDiscount;
+      })()
     : 0;
   // Client-side total is for display only — the Edge Functions recompute
   // subtotal/discount/shipping/total from the database before charging or
