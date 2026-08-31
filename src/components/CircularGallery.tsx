@@ -126,21 +126,26 @@ export function CircularGallery({
         if (direction > 0 && x + media.plane.scale.x / 2 < -half) media.extra -= media.total;
         if (direction < 0 && x - media.plane.scale.x / 2 > half) media.extra += media.total;
       });
+
+      const focusedMedia = medias.reduce((best, candidate) => Math.abs(candidate.plane.position.x) < Math.abs(best.plane.position.x) ? candidate : best);
+
       items.forEach((item, index) => {
-        const half = viewport.width / 2;
         const candidates = medias.filter((media) => media.index % items.length === index);
         const media = candidates.reduce((best, candidate) => Math.abs(candidate.plane.position.x) < Math.abs(best.plane.position.x) ? candidate : best);
         const label = labelRefs.current[index];
         if (!label) return;
 
-        const labelOffsetY = media.plane.scale.y * 0.62;
-        const labelLeftPercent = 50 + (media.plane.position.x / viewport.width) * 100;
-        const labelTopPercent = 50 + ((media.plane.position.y + labelOffsetY) / viewport.height) * 100;
+        const rect = container.getBoundingClientRect();
+        const imageCenterX = rect.width / 2 + (media.plane.position.x / viewport.width) * rect.width;
+        const imageCenterY = rect.height / 2 + (media.plane.position.y / viewport.height) * rect.height;
+        const imageHeightPx = (media.plane.scale.y * rect.height) / viewport.height;
+        const labelOffsetY = imageHeightPx * 0.62 + 18;
+        const isFocused = focusedMedia === media && Math.abs(media.plane.position.x) < media.plane.scale.x * 0.9;
 
-        label.style.left = `${labelLeftPercent}%`;
-        label.style.top = `${labelTopPercent}%`;
+        label.style.left = `${imageCenterX}px`;
+        label.style.top = `${imageCenterY + labelOffsetY}px`;
         label.style.transform = 'translate(-50%, 0)';
-        label.style.opacity = Math.abs(media.plane.position.x) < half + media.plane.scale.x ? '1' : '0';
+        label.style.opacity = isFocused ? '1' : '0';
       });
       renderer.render({ scene, camera });
       scroll.last = scroll.current;
@@ -174,7 +179,8 @@ export function CircularGallery({
         <span
           key={`${item.text}-${index}`}
           ref={(element) => { labelRefs.current[index] = element; }}
-          className="pointer-events-none absolute left-0 top-0 z-10 whitespace-nowrap text-sm font-semibold drop-shadow-md transition-opacity sm:text-base"
+          className="pointer-events-none absolute left-0 top-0 z-10 whitespace-nowrap text-sm font-semibold text-ink-900 transition-none sm:text-base"
+          style={{ display: 'inline-block', lineHeight: 1.2 }}
         >
           {item.text}
         </span>
