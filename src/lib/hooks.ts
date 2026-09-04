@@ -2,6 +2,16 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Product, Category, Banner } from '@/types';
 
+const productCache = new Map<string, { data: Product[]; expiresAt: number }>();
+const productRequests = new Map<string, Promise<Product[]>>();
+let categoriesCache: { data: Category[]; expiresAt: number } | null = null;
+let categoriesRequest: Promise<Category[]> | null = null;
+const CACHE_TTL = 30_000;
+
+function productCacheKey(options?: Parameters<typeof useProducts>[0]) {
+  return JSON.stringify(options || {});
+}
+
 export function useProducts(options?: {
   category?: string;
   featured?: boolean;
@@ -16,19 +26,34 @@ export function useProducts(options?: {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from('products')
-      .select(`
+    const key = productCacheKey(options);
+    const cached = productCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      setProducts(cached.data);
+      setLoading(false);
+      return;
+    }
+    const pending = productRequests.get(key);
+    if (pending) {
+      setProducts(await pending);
+      setLoading(false);
+      return;
+    }
+
+    const request = (async () => {
+      let query = supabase
+        .from('products')
+        .select(`
         *,
         images:product_images(*),
         category:categories(*),
         variants:product_variants(*)
       `);
 
-    if (options?.category) {
-      const { data: cat } = await supabase.from('categories').select('id').eq('slug', options.category).maybeSingle();
-      if (cat) query = query.eq('category_id', cat.id);
-    }
+      if (options?.category) {
+        const { data: cat } = await supabase.from('categories').select('id').eq('slug', options.category).maybeSingle();
+        if (cat) query = query.eq('category_id', cat.id);
+      }
     if (options?.featured) query = query.eq('featured', true);
     if (options?.bestSeller) query = query.eq('best_seller', true);
     if (options?.onSale) query = query.not('discount_price', 'is', null);
@@ -38,8 +63,13 @@ export function useProducts(options?: {
     }
     if (options?.limit) query = query.limit(options.limit);
 
-    const { data } = await query.order('created_at', { ascending: false });
-    setProducts((data || []) as Product[]);
+      const { data } = await query.order('created_at', { ascending: false });
+      return (data || []) as Product[];
+    })();
+    productRequests.set(key, request);
+    const data = await request.finally(() => productRequests.delete(key));
+    productCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
+    setProducts(data);
     setLoading(false);
   }, [options?.category, options?.featured, options?.bestSeller, options?.limit, options?.search, options?.newArrivals, options?.onSale]);
 
@@ -77,9 +107,21 @@ export function useCategories() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
+    const cached = categoriesCache;
+    if (cached && cached.expiresAt > Date.now()) {
+      setCategories(cached.data);
+      setLoading(false);
+      return;
+    }
+    const request = categoriesRequest || (async () => {
       const { data } = await supabase.from('categories').select('*').eq('enabled', true).order('name');
-      setCategories(data || []);
+      return (data || []) as Category[];
+    })();
+    categoriesRequest = request;
+    (async () => {
+      const data = await request.finally(() => { categoriesRequest = null; });
+      categoriesCache = { data, expiresAt: Date.now() + CACHE_TTL };
+      setCategories(data);
       setLoading(false);
     })();
   }, []);

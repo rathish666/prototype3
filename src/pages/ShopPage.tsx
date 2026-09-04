@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
@@ -18,6 +18,8 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const { categories } = useCategories();
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>(categorySlug ? [categorySlug] : []);
@@ -32,47 +34,29 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
       setLoading(true);
       let query = supabase
         .from('products')
-        .select(`*, images:product_images(*), category:categories(*)`);
+        .select(`*, images:product_images(*), category:categories(*)`, { count: 'exact' });
 
       if (categorySlug) {
         const { data: cat } = await supabase.from('categories').select('id').eq('slug', categorySlug).maybeSingle();
         if (cat) query = query.eq('category_id', cat.id);
       }
 
-      const { data } = await query.order('created_at', { ascending: false });
+      if (!categorySlug && selectedCategories.length > 0) {
+        const ids = categories.filter((category) => selectedCategories.includes(category.slug)).map((category) => category.id);
+        if (ids.length === 0) { setProducts([]); setTotalCount(0); setLoading(false); return; }
+        query = query.in('category_id', ids);
+      }
+      if (selectedSizes.length > 0) query = query.overlaps('sizes', selectedSizes);
+      if (selectedColors.length > 0) query = query.overlaps('colors', selectedColors);
+      if (minRating > 0) query = query.gte('rating', minRating);
+      query = query.gte('price', priceRange[0]).lte('price', priceRange[1]);
+      const orderColumn = sort === 'rating' ? 'rating' : sort === 'popular' ? 'review_count' : sort.startsWith('price') ? 'price' : 'created_at';
+      const { data, count } = await query.order(orderColumn, { ascending: sort === 'price-asc' }).range((page - 1) * 24, page * 24 - 1);
       setProducts((data || []) as Product[]);
+      setTotalCount(count || 0);
       setLoading(false);
     })();
-  }, [categorySlug]);
-
-  const filtered = useMemo(() => {
-    let result = [...products];
-
-    if (selectedCategories.length > 0 && !categorySlug) {
-      const catIds = categories.filter((c) => selectedCategories.includes(c.slug)).map((c) => c.id);
-      result = result.filter((p) => p.category_id && catIds.includes(p.category_id));
-    }
-    if (selectedSizes.length > 0) {
-      result = result.filter((p) => p.sizes.some((s) => selectedSizes.includes(s)));
-    }
-    if (selectedColors.length > 0) {
-      result = result.filter((p) => p.colors.some((c) => selectedColors.some((sc) => c.toLowerCase().includes(sc.toLowerCase()))));
-    }
-    result = result.filter((p) => {
-      const price = p.discount_price && p.discount_price < p.price ? p.discount_price : p.price;
-      return price >= priceRange[0] && price <= priceRange[1];
-    });
-    if (minRating > 0) result = result.filter((p) => p.rating >= minRating);
-
-    switch (sort) {
-      case 'price-asc': result.sort((a, b) => (a.discount_price || a.price) - (b.discount_price || b.price)); break;
-      case 'price-desc': result.sort((a, b) => (b.discount_price || b.price) - (a.discount_price || a.price)); break;
-      case 'popular': result.sort((a, b) => b.review_count - a.review_count); break;
-      case 'rating': result.sort((a, b) => b.rating - a.rating); break;
-      default: break;
-    }
-    return result;
-  }, [products, selectedCategories, selectedSizes, selectedColors, priceRange, minRating, sort, categories, categorySlug]);
+  }, [categorySlug, selectedCategories, selectedSizes, selectedColors, priceRange, minRating, sort, categories, page]);
 
   const toggleArray = (arr: string[], val: string, setter: (v: string[]) => void) => {
     setter(arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val]);
@@ -84,6 +68,7 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
     setSelectedColors([]);
     setPriceRange([0, 99999]);
     setMinRating(0);
+    setPage(1);
   };
 
   const activeFilterCount = selectedCategories.length + selectedSizes.length + selectedColors.length + (minRating > 0 ? 1 : 0);
@@ -206,7 +191,7 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
       <div className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
         <div>
           <h1 className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">{title}</h1>
-          <p className="mt-1 text-sm text-ink-500">{filtered.length} products</p>
+          <p className="mt-1 text-sm text-ink-500">{totalCount} products</p>
         </div>
       </div>
 
@@ -249,7 +234,7 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
             <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : products.length === 0 ? (
             <EmptyState
               title="No products found"
               description="Try adjusting your filters to see more results."
@@ -257,7 +242,13 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
             />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
+              {products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
+            </div>
+          )}
+          {!loading && products.length > 0 && totalCount > 24 && (
+            <div className="mt-6 flex items-center justify-between border-t border-ink-100 pt-4">
+              <p className="text-xs text-ink-500">Showing {(page - 1) * 24 + 1}–{Math.min(page * 24, totalCount)} of {totalCount}</p>
+              <div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button><Button variant="outline" size="sm" disabled={page >= Math.ceil(totalCount / 24)} onClick={() => setPage(page + 1)}>Next</Button></div>
             </div>
           )}
         </div>
@@ -274,7 +265,7 @@ export function ShopPage({ title = 'All Products', categorySlug }: { title?: str
             </div>
             <FilterPanel />
             <Button className="mt-6 w-full" onClick={() => setShowFilters(false)}>
-              Show {filtered.length} results
+              Show {totalCount} results
             </Button>
           </div>
         </div>

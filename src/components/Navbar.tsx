@@ -4,16 +4,16 @@ import { Search, Heart, ShoppingBag, User, Menu, X, ChevronDown } from 'lucide-r
 import { useStore } from '@/store/StoreContext';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import type { Category } from '@/types';
+import { useCategories } from '@/lib/hooks';
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState<Category[]>([]);
   const [shopMenuOpen, setShopMenuOpen] = useState(false);
   const { cartCount, wishlist, customerEmail, customerName } = useStore();
+  const { categories } = useCategories();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,13 +28,6 @@ export function Navbar() {
     setSearchOpen(false);
     setShopMenuOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    (async () => {
-      const { data: cats } = await supabase.from('categories').select('*').eq('enabled', true).order('name');
-      setCategories(cats || []);
-    })();
-  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

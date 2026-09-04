@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { formatPrice } from '@/types';
 import { Spinner, Badge } from '@/components/ui';
 import { statusVariant } from '@/lib/utils';
+import { isCountedRevenueOrder } from '@/lib/analytics';
 import type { Order, Product, Customer } from '@/types';
 
 export function AdminDashboardPage() {
@@ -40,7 +41,7 @@ export function AdminDashboardPage() {
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const label = d.toLocaleDateString('en-US', { month: 'short' });
-        const monthOrders = (ords || []).filter((o) => {
+        const monthOrders = (ords || []).filter(isCountedRevenueOrder).filter((o) => {
           const od = new Date(o.created_at);
           return od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear();
         });
@@ -62,9 +63,10 @@ export function AdminDashboardPage() {
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
 
-  const totalSales = orders.reduce((s, o) => s + Number(o.total), 0);
+  const countedOrders = orders.filter(isCountedRevenueOrder);
+  const totalSales = countedOrders.reduce((s, o) => s + Number(o.total), 0);
   const today = new Date().toDateString();
-  const todaySales = orders.filter((o) => new Date(o.created_at).toDateString() === today).reduce((s, o) => s + Number(o.total), 0);
+  const todaySales = countedOrders.filter((o) => new Date(o.created_at).toDateString() === today).reduce((s, o) => s + Number(o.total), 0);
   const pendingOrders = orders.filter((o) => ['Pending', 'Confirmed', 'Processing'].includes(o.status)).length;
   const completedOrders = orders.filter((o) => o.status === 'Delivered').length;
   const cancelledOrders = orders.filter((o) => o.status === 'Cancelled').length;
@@ -74,7 +76,7 @@ export function AdminDashboardPage() {
   const stats = [
     { label: 'Total Sales', value: formatPrice(totalSales), icon: DollarSign, change: '+12.5%', up: true, color: 'bg-green-500' },
     { label: "Today's Sales", value: formatPrice(todaySales), icon: TrendingUp, change: '+8.2%', up: true, color: 'bg-blue-500' },
-    { label: 'Total Orders', value: orders.length, icon: ShoppingCart, change: '+5.1%', up: true, color: 'bg-purple-500' },
+    { label: 'Total Orders', value: countedOrders.length, icon: ShoppingCart, change: '+5.1%', up: true, color: 'bg-purple-500' },
     { label: 'Pending Orders', value: pendingOrders, icon: AlertTriangle, change: '-2.3%', up: false, color: 'bg-amber-500' },
     { label: 'Total Customers', value: customers.length, icon: Users, change: '+18.7%', up: true, color: 'bg-indigo-500' },
     { label: 'Total Products', value: products.length, icon: Package, change: '+3.4%', up: true, color: 'bg-teal-500' },

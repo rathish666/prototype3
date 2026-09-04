@@ -11,17 +11,23 @@ export function AdminCustomersPage() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const perPage = 10;
 
   const fetchData = async () => {
     setLoading(true);
-    const { data } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('customers').select('*', { count: 'exact' });
+    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`);
+    const { data, count } = await query.order('created_at', { ascending: false }).range((page - 1) * perPage, page * perPage - 1);
     setCustomers((data || []) as Customer[]);
+    setTotalCount(count || 0);
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [search, page]);
 
-  const filtered = customers.filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase()));
+  const totalPages = Math.ceil(totalCount / perPage);
 
   const viewCustomer = async (cust: Customer) => {
     setSelected(cust);
@@ -41,17 +47,17 @@ export function AdminCustomersPage() {
 
       <div className="mb-4 relative max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-        <input className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-ink-900" placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-ink-900" placeholder="Search customers..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
       </div>
 
-      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : filtered.length === 0 ? <EmptyState title="No customers found" /> : (
+      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : customers.length === 0 ? <EmptyState title="No customers found" /> : (
         <div className="overflow-x-auto rounded-xl border border-ink-100 bg-white">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-ink-100 text-left text-xs text-ink-500">
               <th className="p-4 font-medium">Customer</th><th className="p-4 font-medium">Phone</th><th className="p-4 font-medium">Orders</th><th className="p-4 font-medium">Total Spent</th><th className="p-4 font-medium">Joined</th><th className="p-4 font-medium">Status</th><th className="p-4 font-medium text-right">Action</th>
             </tr></thead>
             <tbody>
-              {filtered.map((c) => (
+              {customers.map((c) => (
                 <tr key={c.id} className="border-b border-ink-50 hover:bg-ink-50">
                   <td className="p-4"><div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-full bg-ink-900 text-xs font-bold text-white">{c.name.charAt(0)}</div><div><p className="font-medium text-ink-900">{c.name}</p><p className="text-xs text-ink-500">{c.email}</p></div></div></td>
                   <td className="p-4 text-ink-600">{c.phone || '—'}</td>
@@ -64,6 +70,7 @@ export function AdminCustomersPage() {
               ))}
             </tbody>
           </table>
+          {totalPages > 1 && <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3"><p className="text-xs text-ink-500">Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, totalCount)} of {totalCount}</p><div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button></div></div>}
         </div>
       )}
 

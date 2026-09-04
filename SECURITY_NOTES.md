@@ -93,6 +93,41 @@ toast for that case instead of silently failing. If you want the old
 instant-login demo UX back, turn "Confirm email" off for this project — but
 note that leaving it on is the more secure default for a real store.
 
+## 7. Inventory reservations
+
+Run the inventory reservation migration after the existing migrations:
+
+```
+supabase db push
+```
+
+Checkout now reserves exact product variants and limited-use coupons for 30 minutes before opening Razorpay. The payment callback and signed webhook consume those reservations after successful verification, so concurrent customers cannot both buy the same available units or consume the same limited coupon. Configure a scheduled server-side job to call `release_expired_stock_reservations()` regularly, and define an operational refund/manual-review process for a payment that succeeds after its reservation has expired.
+
+
+## 8. Razorpay payment security
+
+The payment Edge Functions require `RAZORPAY_MODE` to be exactly `test` or
+`live`, and reject a key whose prefix does not match that mode. Configure
+`RAZORPAY_MODE=test` with `rzp_test_...` credentials in staging and
+`RAZORPAY_MODE=live` with `rzp_live_...` credentials only in the production
+Supabase project. Never place either Razorpay secret in `VITE_*` variables.
+
+Payment finalization is performed by the `finalize_payment_for_order` database
+function in one transaction. The browser callback and webhook verify the
+signature and validate the Razorpay order ID, INR currency, exact amount, and
+`captured` status before claiming an order. Configure the Razorpay webhook for
+the production function URL, enable `payment.captured`, and use a separate
+webhook secret for each environment.
+
+## 9. Rate limiting
+
+The checkout creation function allows five attempts per ten minutes per
+gateway-observed IP and normalized checkout email. Payment verification allows
+five attempts per ten minutes per gateway-observed IP and payment ID. Exceeded
+limits return HTTP 429 with `Retry-After`. The Razorpay webhook is not subject
+to this customer limiter; its signature verification and retry responses are
+the protection against provider-originated abuse. Apply the rate-limit
+migration and schedule `purge_old_api_rate_limits()` periodically.
 ---
 
 ## What changed, for reference

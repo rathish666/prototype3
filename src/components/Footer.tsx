@@ -2,21 +2,14 @@ import { Link } from 'react-router-dom';
 import { Share2, Globe, MessageCircle, Send, Mail, Phone, MapPin } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useStore } from '@/store/StoreContext';
-import { useEffect, useState } from 'react';
-import type { Category } from '@/types';
+import { useState } from 'react';
+import { useCategories } from '@/lib/hooks';
 
 export function Footer() {
   const { showToast } = useStore();
   const [email, setEmail] = useState('');
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from('categories').select('*').eq('enabled', true).order('name').limit(6);
-      setCategories(data || []);
-    })();
-  }, []);
+  const { categories } = useCategories();
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,19 +37,19 @@ export function Footer() {
               <h3 className="font-display text-2xl font-bold text-white">Join the Maison Circle</h3>
               <p className="mt-2 text-sm text-ink-400">Subscribe for exclusive offers, early access to new collections, and style updates.</p>
             </div>
-            <form onSubmit={handleSubscribe} className="flex gap-3">
+            <form onSubmit={handleSubscribe} className="flex min-w-0 flex-col gap-3 sm:flex-row">
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                className="flex-1 rounded-lg border border-ink-700 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-ink-500 focus:border-accent-500 focus:outline-none"
+                className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-ink-500 focus:border-accent-500 focus:outline-none"
                 required
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-ink-900 transition-colors hover:bg-ink-100 disabled:opacity-50"
+                className="w-full rounded-lg bg-white px-6 py-3 text-sm font-semibold text-ink-900 transition-colors hover:bg-ink-100 disabled:opacity-50 sm:w-auto"
               >
                 {loading ? 'Subscribing...' : 'Subscribe'}
               </button>
@@ -66,7 +59,7 @@ export function Footer() {
       </div>
 
       {/* Links */}
-      <div className="mx-auto max-w-7xl px-4 py-12">
+          <div className="mx-auto max-w-7xl min-w-0 px-4 py-12">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
           <div className="col-span-2 lg:col-span-1">
             <Link to="/" className="flex items-center">
@@ -125,15 +118,15 @@ export function Footer() {
             <ul className="mt-4 space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin size={16} className="mt-0.5 shrink-0 text-accent-500" />
-                <span>123 fashion ,nort street, villupram ,tamin nadu ,india</span>
+                <span className="min-w-0 break-words">123 fashion ,nort street, villupram ,tamin nadu ,india</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone size={16} className="shrink-0 text-accent-500" />
-                <span>+91 9003279815</span>
+                <span className="min-w-0 break-words">+91 9003279815</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail size={16} className="shrink-0 text-accent-500" />
-                <span>srathish575@gmail.com</span>
+                <span className="min-w-0 break-all">srathish575@gmail.com</span>
               </li>
             </ul>
           </div>

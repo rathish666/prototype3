@@ -10,17 +10,23 @@ export function AdminReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const perPage = 10;
 
   const fetchData = async () => {
     setLoading(true);
-    const { data } = await supabase.from('reviews').select('*, product:products(name)').order('created_at', { ascending: false });
+    let query = supabase.from('reviews').select('*, product:products(name)', { count: 'exact' });
+    if (filter !== 'all') query = query.eq('status', filter);
+    const { data, count } = await query.order('created_at', { ascending: false }).range((page - 1) * perPage, page * perPage - 1);
     setReviews((data || []) as Review[]);
+    setTotalCount(count || 0);
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [filter, page]);
 
-  const filtered = reviews.filter((r) => filter === 'all' || r.status === filter);
+  const totalPages = Math.ceil(totalCount / perPage);
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('reviews').update({ status }).eq('id', id);
@@ -33,13 +39,13 @@ export function AdminReviewsPage() {
 
       <div className="mb-4 flex gap-2">
         {['all', 'pending', 'approved', 'hidden'].map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={`rounded-lg px-4 py-2 text-sm font-medium capitalize ${filter === f ? 'bg-ink-900 text-white' : 'border border-ink-200 text-ink-600 hover:bg-ink-50'}`}>{f}</button>
+          <button key={f} onClick={() => { setFilter(f); setPage(1); }} className={`rounded-lg px-4 py-2 text-sm font-medium capitalize ${filter === f ? 'bg-ink-900 text-white' : 'border border-ink-200 text-ink-600 hover:bg-ink-50'}`}>{f}</button>
         ))}
       </div>
 
-      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : filtered.length === 0 ? <EmptyState title="No reviews found" /> : (
+      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : reviews.length === 0 ? <EmptyState title="No reviews found" /> : (
         <div className="space-y-4">
-          {filtered.map((r) => (
+          {reviews.map((r) => (
             <div key={r.id} className="rounded-xl border border-ink-100 bg-white p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -67,6 +73,7 @@ export function AdminReviewsPage() {
               {r.status === 'hidden' && <Button size="sm" variant="outline" className="mt-4" onClick={() => updateStatus(r.id, 'approved')}>Approve Review</Button>}
             </div>
           ))}
+          {totalPages > 1 && <div className="flex items-center justify-between border-t border-ink-100 pt-3"><p className="text-xs text-ink-500">Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, totalCount)} of {totalCount}</p><div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button></div></div>}
         </div>
       )}
     </div>

@@ -1,35 +1,35 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { StoreProvider } from '@/store/StoreContext';
 import { StorefrontLayout } from '@/layouts/StorefrontLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
-import { HomePage } from '@/pages/HomePage';
-import { ShopPage } from '@/pages/ShopPage';
-import { CategoryPage } from '@/pages/CategoryPage';
-import { ProductDetailsPage } from '@/pages/ProductDetailsPage';
-import { SearchResultsPage } from '@/pages/SearchResultsPage';
-import { WishlistPage } from '@/pages/WishlistPage';
-import { CartPage } from '@/pages/CartPage';
-import { CheckoutPage } from '@/pages/CheckoutPage';
-import { OrderConfirmationPage } from '@/pages/OrderConfirmationPage';
-import { AuthPage } from '@/pages/AuthPage';
-import { AccountPage } from '@/pages/AccountPage';
-import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
-import { AdminProductsPage } from '@/pages/admin/AdminProductsPage';
-import { AdminProductEditPage } from '@/pages/admin/AdminProductEditPage';
-import { AdminInventoryPage } from '@/pages/admin/AdminInventoryPage';
-import { AdminOrdersPage } from '@/pages/admin/AdminOrdersPage';
-import { AdminCustomersPage } from '@/pages/admin/AdminCustomersPage';
-import { AdminCategoriesPage } from '@/pages/admin/AdminCategoriesPage';
-import { AdminCouponsPage } from '@/pages/admin/AdminCouponsPage';
-import { AdminReviewsPage } from '@/pages/admin/AdminReviewsPage';
-import { AdminAnalyticsPage } from '@/pages/admin/AdminAnalyticsPage';
-import { AdminContentPage } from '@/pages/admin/AdminContentPage';
-import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage';
-import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
-import { TermsPage } from '@/pages/legal/TermsPage';
-import { ShippingPolicyPage } from '@/pages/legal/ShippingPolicyPage';
-import { RefundPolicyPage } from '@/pages/legal/RefundPolicyPage';
+const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })));
+const ShopPage = lazy(() => import('@/pages/ShopPage').then((m) => ({ default: m.ShopPage })));
+const CategoryPage = lazy(() => import('@/pages/CategoryPage').then((m) => ({ default: m.CategoryPage })));
+const ProductDetailsPage = lazy(() => import('@/pages/ProductDetailsPage').then((m) => ({ default: m.ProductDetailsPage })));
+const SearchResultsPage = lazy(() => import('@/pages/SearchResultsPage').then((m) => ({ default: m.SearchResultsPage })));
+const WishlistPage = lazy(() => import('@/pages/WishlistPage').then((m) => ({ default: m.WishlistPage })));
+const CartPage = lazy(() => import('@/pages/CartPage').then((m) => ({ default: m.CartPage })));
+const CheckoutPage = lazy(() => import('@/pages/CheckoutPage').then((m) => ({ default: m.CheckoutPage })));
+const OrderConfirmationPage = lazy(() => import('@/pages/OrderConfirmationPage').then((m) => ({ default: m.OrderConfirmationPage })));
+const AuthPage = lazy(() => import('@/pages/AuthPage').then((m) => ({ default: m.AuthPage })));
+const AccountPage = lazy(() => import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })));
+const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
+const AdminProductsPage = lazy(() => import('@/pages/admin/AdminProductsPage').then((m) => ({ default: m.AdminProductsPage })));
+const AdminProductEditPage = lazy(() => import('@/pages/admin/AdminProductEditPage').then((m) => ({ default: m.AdminProductEditPage })));
+const AdminInventoryPage = lazy(() => import('@/pages/admin/AdminInventoryPage').then((m) => ({ default: m.AdminInventoryPage })));
+const AdminOrdersPage = lazy(() => import('@/pages/admin/AdminOrdersPage').then((m) => ({ default: m.AdminOrdersPage })));
+const AdminCustomersPage = lazy(() => import('@/pages/admin/AdminCustomersPage').then((m) => ({ default: m.AdminCustomersPage })));
+const AdminCategoriesPage = lazy(() => import('@/pages/admin/AdminCategoriesPage').then((m) => ({ default: m.AdminCategoriesPage })));
+const AdminCouponsPage = lazy(() => import('@/pages/admin/AdminCouponsPage').then((m) => ({ default: m.AdminCouponsPage })));
+const AdminReviewsPage = lazy(() => import('@/pages/admin/AdminReviewsPage').then((m) => ({ default: m.AdminReviewsPage })));
+const AdminAnalyticsPage = lazy(() => import('@/pages/admin/AdminAnalyticsPage').then((m) => ({ default: m.AdminAnalyticsPage })));
+const AdminContentPage = lazy(() => import('@/pages/admin/AdminContentPage').then((m) => ({ default: m.AdminContentPage })));
+const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })));
+const PrivacyPolicyPage = lazy(() => import('@/pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })));
+const TermsPage = lazy(() => import('@/pages/legal/TermsPage').then((m) => ({ default: m.TermsPage })));
+const ShippingPolicyPage = lazy(() => import('@/pages/legal/ShippingPolicyPage').then((m) => ({ default: m.ShippingPolicyPage })));
+const RefundPolicyPage = lazy(() => import('@/pages/legal/RefundPolicyPage').then((m) => ({ default: m.RefundPolicyPage })));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -46,7 +46,7 @@ function App() {
     <StoreProvider>
       <BrowserRouter>
         <ScrollToTop />
-        <Routes>
+        <Suspense fallback={<div className="grid min-h-[40vh] place-items-center" />}> <Routes>
           {/* Storefront */}
           <Route element={<StorefrontLayout />}>
             <Route path="/" element={<HomePage />} />
@@ -88,7 +88,7 @@ function App() {
             <Route path="content" element={<AdminContentPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
           </Route>
-        </Routes>
+        </Routes></Suspense>
       </BrowserRouter>
     </StoreProvider>
   );

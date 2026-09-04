@@ -87,7 +87,7 @@ export function OrderConfirmationPage() {
             {items.map((item) => (
               <div key={item.id} className="flex gap-3">
                 <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-ink-50">
-                  {item.product_image && <img src={item.product_image} alt="" className="h-full w-full object-cover" />}
+                  {item.product_image && <img src={item.product_image} alt="" loading="lazy" width="64" height="80" className="h-full w-full object-cover" />}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-ink-900">{item.product_name}</p>

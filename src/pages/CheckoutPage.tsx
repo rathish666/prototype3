@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, Truck, Check } from 'lucide-react';
 import { useStore } from '@/store/StoreContext';
@@ -28,6 +28,7 @@ export function CheckoutPage() {
   });
 
   const [couponDetails, setCouponDetails] = useState<Coupon | null>(null);
+  const checkoutKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (!appliedCoupon) { setCouponDetails(null); return; }
@@ -84,6 +85,7 @@ export function CheckoutPage() {
     })),
     shippingMethod,
     couponCode: appliedCoupon || undefined,
+    checkoutIdempotencyKey: checkoutKeyRef.current,
   });
 
   const handlePlaceOrder = async () => {
@@ -278,7 +280,7 @@ export function CheckoutPage() {
               {cart.map((item) => (
                 <div key={`${item.product_id}-${item.size}-${item.color}`} className="flex gap-3">
                   <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-ink-50">
-                    <img src={item.image} alt="" className="h-full w-full object-cover" />
+                    <img src={item.image} alt="" loading="lazy" width="56" height="64" className="h-full w-full object-cover" />
                   </div>
                   <div className="flex-1 text-sm">
                     <p className="font-medium text-ink-900 line-clamp-1">{item.name}</p>

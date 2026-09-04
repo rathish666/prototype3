@@ -6,6 +6,7 @@ import { formatPrice, type Order, type OrderItem } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { statusVariant } from '@/lib/utils';
 import { ORDER_STATUSES } from '@/types';
+import { useStore } from '@/store/StoreContext';
 
 function paymentStatusVariant(status?: string): 'default' | 'success' | 'warning' | 'error' | 'info' | 'accent' {
   switch (status) {
@@ -18,6 +19,7 @@ function paymentStatusVariant(status?: string): 'default' | 'success' | 'warning
 }
 
 export function AdminOrdersPage() {
+  const { showToast } = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -25,21 +27,24 @@ export function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [updating, setUpdating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const perPage = 10;
 
   const fetchData = async () => {
     setLoading(true);
-    const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('orders').select('*', { count: 'exact' });
+    if (search.trim()) query = query.or(`order_number.ilike.%${search.trim()}%,customer_name.ilike.%${search.trim()}%,customer_email.ilike.%${search.trim()}%`);
+    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+    const { data, count } = await query.order('created_at', { ascending: false }).range((page - 1) * perPage, page * perPage - 1);
     setOrders((data || []) as Order[]);
+    setTotalCount(count || 0);
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [search, statusFilter, page]);
 
-  const filtered = orders.filter((o) => {
-    if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) && !o.customer_name.toLowerCase().includes(search.toLowerCase()) && !o.customer_email.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-    return true;
-  });
+  const totalPages = Math.ceil(totalCount / perPage);
 
   const viewOrder = async (order: Order) => {
     setSelectedOrder(order);
@@ -49,8 +54,14 @@ export function AdminOrdersPage() {
 
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(true);
-    await supabase.from('orders').update({ status }).eq('id', orderId);
+    const result = ['Cancelled', 'Returned'].includes(status)
+      ? await supabase.rpc('admin_update_order_status', { p_order_id: orderId, p_status: status })
+      : await supabase.from('orders').update({ status }).eq('id', orderId);
     setUpdating(false);
+    if (result.error) {
+      showToast(result.error.message || 'Could not update order status', 'error');
+      return;
+    }
     setSelectedOrder(null);
     fetchData();
   };
@@ -70,14 +81,14 @@ export function AdminOrdersPage() {
         </select>
       </div>
 
-      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : filtered.length === 0 ? <EmptyState title="No orders found" /> : (
+      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : orders.length === 0 ? <EmptyState title="No orders found" /> : (
         <div className="overflow-x-auto rounded-xl border border-ink-100 bg-white">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-ink-100 text-left text-xs text-ink-500">
               <th className="p-4 font-medium">Order #</th><th className="p-4 font-medium">Customer</th><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Total</th><th className="p-4 font-medium">Payment</th><th className="p-4 font-medium">Status</th><th className="p-4 font-medium">Fulfillment</th><th className="p-4 font-medium text-right">Action</th>
             </tr></thead>
             <tbody>
-              {filtered.map((o) => (
+              {orders.map((o) => (
                 <tr key={o.id} className="border-b border-ink-50 hover:bg-ink-50">
                   <td className="p-4 font-medium text-ink-900">{o.order_number}</td>
                   <td className="p-4"><p className="text-ink-900">{o.customer_name}</p><p className="text-xs text-ink-500">{o.customer_email}</p></td>
@@ -91,6 +102,7 @@ export function AdminOrdersPage() {
               ))}
             </tbody>
           </table>
+          {totalPages > 1 && <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3"><p className="text-xs text-ink-500">Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, totalCount)} of {totalCount}</p><div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button></div></div>}
         </div>
       )}
 

@@ -20,7 +20,7 @@ interface StoreContextValue {
   cartSubtotal: number;
   // Wishlist
   wishlist: string[];
-  toggleWishlist: (productId: string) => void;
+  toggleWishlist: (productId: string) => Promise<void>;
   isInWishlist: (productId: string) => boolean;
   // Customer
   customerEmail: string | null;
@@ -67,11 +67,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
   }, []);
 
-  // Customer identity now comes from the real Supabase Auth session
-  // (JWT), never from browser storage the user could edit to impersonate
-  // someone else.
+  const readGuestWishlist = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]');
+      return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Customer identity now comes from the real Supabase Auth session (JWT).
   useEffect(() => {
     let cancelled = false;
+
+    const syncWishlist = async (email: string) => {
+      const normalizedEmail = email.trim().toLowerCase();
+      const guestWishlist = readGuestWishlist();
+      const { data: rows, error } = await supabase
+        .from('wishlist')
+        .select('product_id')
+        .eq('customer_email', normalizedEmail);
+      if (cancelled || error) return;
+
+      const databaseWishlist = (rows || [])
+        .map((row) => row.product_id)
+        .filter((id): id is string => typeof id === 'string');
+      const { data: validProducts, error: productsError } = await supabase
+        .from('products')
+        .select('id')
+        .in('id', [...new Set([...databaseWishlist, ...guestWishlist])]);
+      if (cancelled || productsError) return;
+
+      const validProductIds = new Set((validProducts || []).map((product) => product.id));
+      const mergedWishlist = [...new Set([...databaseWishlist, ...guestWishlist])]
+        .filter((id) => validProductIds.has(id));
+      const missingIds = mergedWishlist.filter((id) => !databaseWishlist.includes(id));
+
+      if (missingIds.length > 0) {
+        const { error: mergeError } = await supabase.from('wishlist').insert(
+          missingIds.map((productId) => ({ customer_email: normalizedEmail, product_id: productId }))
+        );
+        if (mergeError && mergeError.code !== '23505') return;
+      }
+
+      if (cancelled) return;
+      setWishlist(mergedWishlist);
+      localStorage.removeItem(WISHLIST_KEY);
+    };
 
     const syncFromSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -79,9 +121,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!session?.user?.email) {
         setCustomerEmail(null);
         setCustomerName(null);
+        setWishlist(readGuestWishlist());
         return;
       }
       setCustomerEmail(session.user.email);
+      setWishlist([]);
+      await syncWishlist(session.user.email);
       const { data: customer } = await supabase
         .from('customers')
         .select('name')
@@ -175,15 +220,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(COUPON_KEY);
   }, []);
 
-  const toggleWishlist = useCallback((productId: string) => {
+  const toggleWishlist = useCallback(async (productId: string) => {
     setWishlist((prev) => {
       const next = prev.includes(productId)
         ? prev.filter((id) => id !== productId)
         : [...prev, productId];
-      localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
+      if (!customerEmail) localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
       return next;
     });
-  }, []);
+    if (customerEmail) {
+      const normalizedEmail = customerEmail.trim().toLowerCase();
+      const { error } = wishlist.includes(productId)
+        ? await supabase.from('wishlist').delete().eq('customer_email', normalizedEmail).eq('product_id', productId)
+        : await supabase.from('wishlist').insert({ customer_email: normalizedEmail, product_id: productId });
+      if (error && error.code !== '23505') {
+        setWishlist((prev) => prev.includes(productId)
+          ? prev.filter((id) => id !== productId)
+          : [...prev, productId]);
+      }
+    }
+  }, [customerEmail, wishlist]);
 
   const isInWishlist = useCallback((productId: string) => wishlist.includes(productId), [wishlist]);
 

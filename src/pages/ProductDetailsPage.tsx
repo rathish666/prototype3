@@ -97,7 +97,7 @@ export function ProductDetailsPage() {
         <div>
           <div className="relative overflow-hidden rounded-xl bg-ink-50">
             <div className="aspect-[3/4]">
-              <img src={resolveProductImageUrl(product.images?.[selectedImage]?.url) || undefined} alt={product.name} className="h-full w-full object-cover" />
+              <img src={resolveProductImageUrl(product.images?.[selectedImage]?.url) || undefined} alt={product.name} width="800" height="1067" className="h-full w-full object-cover" />
             </div>
             {discount > 0 && (
               <div className="absolute left-4 top-4"><Badge variant="error">-{discount}% OFF</Badge></div>
@@ -117,7 +117,7 @@ export function ProductDetailsPage() {
                     i === selectedImage ? 'border-ink-900' : 'border-transparent hover:border-ink-300'
                   )}
                 >
-                  <img src={resolveProductImageUrl(img.url) || undefined} alt="" className="h-full w-full object-cover" />
+                  <img src={resolveProductImageUrl(img.url) || undefined} alt="" loading="lazy" width="96" height="128" className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>

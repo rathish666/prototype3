@@ -44,6 +44,18 @@ function jsonError(message: string, status = 400, corsHeaders: Record<string, st
   });
 }
 
+function rateLimitResponse(retryAfter: number, corsHeaders: Record<string, string>) {
+  return new Response(JSON.stringify({ error: "Too many checkout attempts. Please try again shortly." }), {
+    status: 429,
+    headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+  });
+}
+
+function requestIdentity(req: Request, email?: string) {
+  const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  return `ip:${forwardedFor}|email:${String(email ?? "").toLowerCase().slice(0, 160)}`;
+}
+
 function generateOrderNumber() {
   const rand = Math.floor(100000 + Math.random() * 900000);
   return `ORD-${rand}`;
@@ -57,7 +69,7 @@ Deno.serve(async (req) => {
   try {
     // Client sends product_id + size + color + qty only. Price is NEVER
     // trusted from the browser — it's looked up from the database below.
-    const { customer, items, shippingMethod, couponCode } = await req.json();
+    const { customer, items, shippingMethod, couponCode, checkoutIdempotencyKey } = await req.json();
 
     if (!customer?.name || !customer?.email || !customer?.phone || !customer?.address || !customer?.city) {
       throw new Error("Missing customer details");
@@ -67,6 +79,9 @@ Deno.serve(async (req) => {
       throw new Error("Invalid phone number");
     }
     if (!Array.isArray(items) || items.length === 0) throw new Error("Cart is empty");
+    if (typeof checkoutIdempotencyKey !== "string" || !/^[0-9a-f-]{36}$/i.test(checkoutIdempotencyKey)) {
+      throw new Error("Invalid checkout request");
+    }
     for (const it of items) {
       if (!it.product_id || !Number.isInteger(it.qty) || it.qty < 1 || it.qty > 50) {
         throw new Error("Invalid item in cart");
@@ -77,6 +92,37 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const { data: limit, error: limitError } = await supabase.rpc("consume_api_rate_limit", {
+      p_key: `checkout:${requestIdentity(req, customer.email)}`,
+      p_max_requests: 5,
+      p_window_seconds: 600,
+    });
+    if (limitError) throw new Error("Checkout protection is temporarily unavailable");
+    if (limit?.[0] && !limit[0].allowed) return rateLimitResponse(limit[0].retry_after_seconds, corsHeaders);
+    const keyId = Deno.env.get("RAZORPAY_KEY_ID");
+    const keySecret = Deno.env.get("RAZORPAY_KEY_SECRET");
+    const mode = Deno.env.get("RAZORPAY_MODE");
+    if (!keyId || !keySecret || (mode !== "test" && mode !== "live")) {
+      throw new Error("Payment service is not configured");
+    }
+    if ((mode === "test" && !keyId.startsWith("rzp_test_")) || (mode === "live" && !keyId.startsWith("rzp_live_"))) {
+      throw new Error("Razorpay key does not match configured payment mode");
+    }
+
+    const { data: existingOrder } = await supabase
+      .from("orders")
+      .select("id, order_number, razorpay_order_id, total, payment_status")
+      .eq("checkout_idempotency_key", checkoutIdempotencyKey)
+      .maybeSingle();
+    if (existingOrder?.razorpay_order_id && ["pending", "processing"].includes(existingOrder.payment_status)) {
+      return new Response(JSON.stringify({
+        razorpayOrderId: existingOrder.razorpay_order_id,
+        razorpayKeyId: keyId,
+        amount: Math.round(Number(existingOrder.total) * 100),
+        currency: "INR",
+        orderNumber: existingOrder.order_number,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // ---- fetch REAL prices/stock from the database ----
     const productIds = [...new Set(items.map((i: any) => i.product_id))];
@@ -147,24 +193,14 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (coupon && (!coupon.expires_at || new Date(coupon.expires_at) >= new Date()) && subtotal >= Number(coupon.min_order)) {
-        const usageLimit = coupon.usage_limit != null ? Number(coupon.usage_limit) : null;
-        const usedCount = Number(coupon.used_count ?? 0);
-        if (usageLimit == null || usedCount < usageLimit) {
+          if (coupon.usage_limit == null || Number(coupon.used_count ?? 0) < Number(coupon.usage_limit)) {
           const rawDiscount = coupon.type === "percentage"
             ? subtotal * (Number(coupon.value) / 100)
             : Math.min(Number(coupon.value), subtotal);
           const maxDiscount = coupon.max_discount != null ? Number(coupon.max_discount) : null;
           discount = maxDiscount != null ? Math.min(rawDiscount, maxDiscount) : rawDiscount;
 
-          const { error: consumeErr } = await supabase
-            .from("coupons")
-            .update({ used_count: usedCount + 1 })
-            .eq("id", coupon.id)
-            .lt("used_count", usageLimit ?? Number.MAX_SAFE_INTEGER);
-
-          if (!consumeErr) {
-            appliedCouponCode = coupon.code;
-          }
+          appliedCouponCode = coupon.code;
         }
       }
     }
@@ -173,23 +209,6 @@ Deno.serve(async (req) => {
     const shippingFee = method === "Express" ? 25 : subtotal >= 75 ? 0 : 12;
     const total = Math.max(0, subtotal - discount) + shippingFee;
     if (!(total > 0)) throw new Error("Invalid order total");
-
-    // ---- create Razorpay order ----
-    const keyId = Deno.env.get("RAZORPAY_KEY_ID")!;
-    const keySecret = Deno.env.get("RAZORPAY_KEY_SECRET")!;
-    const auth = btoa(`${keyId}:${keySecret}`);
-
-    const rpRes = await fetch("https://api.razorpay.com/v1/orders", {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: Math.round(total * 100), // paise
-        currency: "INR",
-        receipt: `rcpt_${Date.now()}`,
-      }),
-    });
-    if (!rpRes.ok) throw new Error(`Razorpay order creation failed: ${await rpRes.text()}`);
-    const rpOrder = await rpRes.json();
 
     // ---- find or create the lightweight customer profile ----
     let customerId: string | null = null;
@@ -229,7 +248,7 @@ Deno.serve(async (req) => {
           status: "Pending",
           payment_method: "Razorpay",
           payment_status: "pending",
-          razorpay_order_id: rpOrder.id,
+          checkout_idempotency_key: checkoutIdempotencyKey,
         })
         .select("id, order_number")
         .maybeSingle();
@@ -243,6 +262,58 @@ Deno.serve(async (req) => {
       verifiedItems.map((it) => ({ ...it, order_id: order!.id })),
     );
     if (itemsError) throw itemsError;
+
+    // Reserve inventory before opening Razorpay. The RPC performs conditional
+    // stock updates in one database transaction, so concurrent checkouts
+    // cannot both reserve the same units. The reservation is consumed after
+    // signed payment confirmation and released by the expiry worker or an
+    // explicit failure/cancellation path.
+    const reservationExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const { error: reservationError } = await supabase.rpc("reserve_stock_for_order", {
+      p_order_id: order.id,
+      p_expires_at: reservationExpiresAt,
+    });
+    if (reservationError) throw reservationError;
+
+    if (appliedCouponCode) {
+      const { data: couponReserved, error: couponReservationError } = await supabase.rpc("reserve_coupon_for_order", {
+        p_order_id: order.id,
+        p_coupon_code: appliedCouponCode,
+        p_expires_at: reservationExpiresAt,
+      });
+      if (couponReservationError || !couponReserved) {
+        await supabase.rpc("release_stock_reservation", { p_order_id: order.id });
+        throw new Error("This coupon is no longer available");
+      }
+    }
+
+    // ---- create Razorpay order after inventory is reserved ----
+    const auth = btoa(`${keyId}:${keySecret}`);
+
+    const rpRes = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: Math.round(total * 100), // paise
+        currency: "INR",
+        receipt: `rcpt_${order.order_number}`,
+      }),
+    });
+    if (!rpRes.ok) {
+      await supabase.rpc("release_stock_reservation", { p_order_id: order.id });
+      throw new Error(`Razorpay order creation failed: ${await rpRes.text()}`);
+    }
+    const rpOrder = await rpRes.json();
+
+    const { error: linkError } = await supabase
+      .from("orders")
+      .update({ razorpay_order_id: rpOrder.id })
+      .eq("id", order.id);
+    if (linkError) {
+      await supabase.rpc("release_stock_reservation", { p_order_id: order.id });
+      await supabase.rpc("release_coupon_reservation", { p_order_id: order.id });
+      throw linkError;
+    }
 
     return new Response(
       JSON.stringify({

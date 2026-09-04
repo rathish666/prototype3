@@ -36,6 +36,18 @@ function jsonError(message: string, status = 400, corsHeaders: Record<string, st
   });
 }
 
+function rateLimitResponse(retryAfter: number, corsHeaders: Record<string, string>) {
+  return new Response(JSON.stringify({ error: "Too many verification attempts. Please try again shortly." }), {
+    status: 429,
+    headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+  });
+}
+
+function requestIdentity(req: Request, paymentId: string) {
+  const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  return `payment:${paymentId.slice(0, 80)}|ip:${forwardedFor}`;
+}
+
 async function verifySignature(orderId: string, paymentId: string, signature: string, secret: string) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -47,6 +59,15 @@ async function verifySignature(orderId: string, paymentId: string, signature: st
   const sigBuffer = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${orderId}|${paymentId}`));
   const expected = Array.from(new Uint8Array(sigBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
   return expected === signature;
+}
+
+async function fetchVerifiedPayment(paymentId: string, keyId: string, keySecret: string) {
+  const auth = btoa(`${keyId}:${keySecret}`);
+  const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!response.ok) throw new Error("Unable to verify payment with Razorpay");
+  return response.json();
 }
 
 async function sendWhatsAppAlert(order: any, items: any[]) {
@@ -98,11 +119,31 @@ Deno.serve(async (req) => {
       throw new Error("Missing payment fields");
     }
 
+    const limiter = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: limit, error: limitError } = await limiter.rpc("consume_api_rate_limit", {
+      p_key: `payment-verify:${requestIdentity(req, razorpay_payment_id)}`,
+      p_max_requests: 5,
+      p_window_seconds: 600,
+    });
+    if (limitError) throw new Error("Payment protection is temporarily unavailable");
+    if (limit?.[0] && !limit[0].allowed) return rateLimitResponse(limit[0].retry_after_seconds, corsHeaders);
+
+    const keyId = Deno.env.get("RAZORPAY_KEY_ID");
+    const keySecret = Deno.env.get("RAZORPAY_KEY_SECRET");
+    const mode = Deno.env.get("RAZORPAY_MODE");
+    if (!keyId || !keySecret || (mode !== "test" && mode !== "live")) throw new Error("Payment service is not configured");
+    if ((mode === "test" && !keyId.startsWith("rzp_test_")) || (mode === "live" && !keyId.startsWith("rzp_live_"))) {
+      throw new Error("Razorpay key does not match configured payment mode");
+    }
+
     const valid = await verifySignature(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-      Deno.env.get("RAZORPAY_KEY_SECRET")!,
+      keySecret,
     );
     if (!valid) throw new Error("Payment signature verification failed");
 
@@ -111,10 +152,26 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Atomic compare-and-set: only the FIRST call (browser callback or the
-    // webhook, whichever arrives first) will actually flip payment_status.
-    // If a row comes back, this call "owns" the follow-up actions below —
-    // stock and WhatsApp can never double-fire, even under a race.
+    const { data: storedOrder, error: orderError } = await supabase
+      .from("orders")
+      .select("id, razorpay_order_id, total")
+      .eq("razorpay_order_id", razorpay_order_id)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!storedOrder) throw new Error("Order not found");
+
+    const payment = await fetchVerifiedPayment(razorpay_payment_id, keyId, keySecret);
+    if (
+      payment.order_id !== storedOrder.razorpay_order_id ||
+      payment.currency !== "INR" ||
+      Number(payment.amount) !== Math.round(Number(storedOrder.total) * 100) ||
+      payment.status !== "captured"
+    ) {
+      throw new Error("Payment details do not match the order");
+    }
+
+    // Claim only after all payment checks pass. The first valid callback or
+    // webhook owns the follow-up work; invalid data cannot strand the order.
     const { data: claimedOrder, error: claimError } = await supabase
       .from("orders")
       .update({ payment_status: "processing" })
@@ -133,8 +190,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    await supabase.rpc("decrement_stock_for_order", { p_order_id: claimedOrder.id });
-    await supabase.from("orders").update({ payment_status: "paid", status: "Confirmed", razorpay_payment_id, razorpay_signature, stock_decremented: true }).eq("id", claimedOrder.id);
+    const { error: finalizeError } = await supabase.rpc("finalize_payment_for_order", {
+      p_order_id: claimedOrder.id,
+      p_payment_id: razorpay_payment_id,
+      p_payment_signature: razorpay_signature,
+    });
+    if (finalizeError) throw finalizeError;
 
     const { data: items } = await supabase.from("order_items").select("*").eq("order_id", claimedOrder.id);
     try {

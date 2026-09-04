@@ -84,7 +84,7 @@ export function CartPage() {
             <div key={`${item.product_id}-${item.size}-${item.color}`} className="flex flex-col gap-4 rounded-xl border border-ink-100 bg-white p-3 sm:flex-row sm:p-4">
               <Link to={`/product/${item.product_id}`} className="shrink-0 self-start">
                 <div className="h-28 w-full overflow-hidden rounded-lg bg-ink-50 sm:h-28 sm:w-24">
-                  <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                  <img src={item.image} alt={item.name} loading="lazy" width="96" height="112" className="h-full w-full object-cover" />
                 </div>
               </Link>
               <div className="flex min-w-0 flex-1 flex-col">

@@ -101,6 +101,25 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const { data: storedOrder, error: orderError } = await supabase
+    .from("orders")
+    .select("id, total, razorpay_order_id")
+    .eq("razorpay_order_id", razorpayOrderId)
+    .maybeSingle();
+  if (orderError || !storedOrder) {
+    console.error("Webhook: order not found for", razorpayOrderId, orderError);
+    return new Response("error", { status: 500 });
+  }
+  if (
+    payment.order_id !== storedOrder.razorpay_order_id ||
+    payment.currency !== "INR" ||
+    Number(payment.amount) !== Math.round(Number(storedOrder.total) * 100) ||
+    payment.status !== "captured"
+  ) {
+    console.error("Webhook: payment details do not match order", razorpayOrderId);
+    return new Response("error", { status: 400 });
+  }
+
   // Same atomic compare-and-set as razorpay-verify-payment: whichever path
   // (browser callback or this webhook) gets here first "wins" and is the
   // only one that runs stock decrement + WhatsApp.
@@ -120,8 +139,16 @@ Deno.serve(async (req) => {
     return new Response("ok", { status: 200 });
   }
 
-  await supabase.rpc("decrement_stock_for_order", { p_order_id: claimedOrder.id });
-  await supabase.from("orders").update({ payment_status: "paid", status: "Confirmed", razorpay_payment_id: payment.id, stock_decremented: true }).eq("id", claimedOrder.id);
+  const { error: finalizeError } = await supabase.rpc("finalize_payment_for_order", {
+    p_order_id: claimedOrder.id,
+    p_payment_id: payment.id,
+      p_payment_signature: null,
+      p_webhook_signature: signature,
+  });
+  if (finalizeError) {
+    console.error("Webhook: payment finalization failed for", razorpayOrderId, finalizeError);
+    return new Response("error", { status: 500 });
+  }
 
   const { data: items } = await supabase.from("order_items").select("*").eq("order_id", claimedOrder.id);
   try {

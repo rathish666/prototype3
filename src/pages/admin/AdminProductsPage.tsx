@@ -16,32 +16,31 @@ export function AdminProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
   const perPage = 10;
 
   const fetchData = async () => {
     setLoading(true);
-    const [{ data: prods }, { data: cats }] = await Promise.all([
-      supabase.from('products').select('*, images:product_images(*), category:categories(*)').order('created_at', { ascending: false }),
-      supabase.from('categories').select('*').order('name'),
-    ]);
+    const { data: cats } = await supabase.from('categories').select('*').order('name');
+    let query = supabase.from('products').select('*, images:product_images(*), category:categories(*)', { count: 'exact' });
+    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,brand.ilike.%${search.trim()}%`);
+    if (categoryFilter !== 'all') {
+      const category = (cats || []).find((item) => item.slug === categoryFilter);
+      if (category) query = query.eq('category_id', category.id);
+    }
+    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+    const { data: prods, count } = await query.order('created_at', { ascending: false }).range((page - 1) * perPage, page * perPage - 1);
     setProducts((prods || []) as Product[]);
     setCategories((cats || []) as Category[]);
+    setTotalCount(count || 0);
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [search, categoryFilter, statusFilter, page]);
 
-  const filtered = products.filter((p) => {
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.brand.toLowerCase().includes(search.toLowerCase())) return false;
-    if (categoryFilter !== 'all' && p.category?.slug !== categoryFilter) return false;
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-    return true;
-  });
-
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
-  const totalPages = Math.ceil(filtered.length / perPage);
+  const totalPages = Math.ceil(totalCount / perPage);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -78,19 +77,19 @@ export function AdminProductsPage() {
       </div>
 
       {/* Table */}
-      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : filtered.length === 0 ? <EmptyState title="No products found" description="Try adjusting filters or add a new product." /> : (
+      {loading ? <div className="flex justify-center py-20"><Spinner /></div> : products.length === 0 ? <EmptyState title="No products found" description="Try adjusting filters or add a new product." /> : (
         <div className="overflow-x-auto rounded-xl border border-ink-100 bg-white">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-ink-100 text-left text-xs text-ink-500">
               <th className="p-4 font-medium">Product</th><th className="p-4 font-medium">Category</th><th className="p-4 font-medium">Price</th><th className="p-4 font-medium">Stock</th><th className="p-4 font-medium">Status</th><th className="p-4 font-medium">Flags</th><th className="p-4 font-medium text-right">Actions</th>
             </tr></thead>
             <tbody>
-              {paginated.map((p) => (
+              {products.map((p) => (
                 <tr key={p.id} className="border-b border-ink-50 hover:bg-ink-50">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="h-12 w-10 shrink-0 overflow-hidden rounded-lg bg-ink-50">
-                        {p.images?.[0]?.url && <img src={resolveProductImageUrl(p.images[0].url) || undefined} alt="" className="h-full w-full object-cover" />}
+                        {p.images?.[0]?.url && <img src={resolveProductImageUrl(p.images[0].url) || undefined} alt="" loading="lazy" width="40" height="48" className="h-full w-full object-cover" />}
                       </div>
                       <div><p className="font-medium text-ink-900 line-clamp-1">{p.name}</p><p className="text-xs text-ink-500">{p.brand} · {p.sku}</p></div>
                     </div>
@@ -122,7 +121,7 @@ export function AdminProductsPage() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3">
-              <p className="text-xs text-ink-500">Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length}</p>
+              <p className="text-xs text-ink-500">Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, totalCount)} of {totalCount}</p>
               <div className="flex gap-1">
                 <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
                 <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>

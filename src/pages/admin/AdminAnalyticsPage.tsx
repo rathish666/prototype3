@@ -7,6 +7,7 @@ import { TrendingUp, ShoppingCart, DollarSign, Users, Package } from 'lucide-rea
 import { supabase } from '@/lib/supabase';
 import { Spinner } from '@/components/ui';
 import { formatPrice } from '@/types';
+import { estimatedProfitFromRevenue, isCountedRevenueOrder } from '@/lib/analytics';
 
 const PIE_COLORS = ['#1a1a1a', '#6b6b78', '#c8862b', '#708238', '#1a2540', '#5e1a1a', '#d2b48c', '#9caf88'];
 
@@ -15,26 +16,30 @@ export function AdminAnalyticsPage() {
   const [salesData, setSalesData] = useState<{ date: string; sales: number; orders: number }[]>([]);
   const [categoryData, setCategoryData] = useState<{ name: string; value: number; revenue: number }[]>([]);
   const [topProducts, setTopProducts] = useState<{ name: string; sales: number; revenue: number }[]>([]);
-  const [monthlyRevenue, setMonthlyRevenue] = useState<{ month: string; revenue: number; profit: number }[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<{ month: string; revenue: number; estimatedProfit: number }[]>([]);
   const [customerGrowth, setCustomerGrowth] = useState<{ month: string; new: number; total: number }[]>([]);
   const [totals, setTotals] = useState({ revenue: 0, orders: 0, customers: 0, products: 0, avgOrder: 0 });
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [{ data: orders }, { data: products }, { data: customers }] = await Promise.all([
+      const [{ data: orders }, { data: products }, { data: customers }, { data: orderItems }] = await Promise.all([
         supabase.from('orders').select('*'),
         supabase.from('products').select('*, category:categories(name)'),
         supabase.from('customers').select('*'),
+        supabase.from('order_items').select('product_id, product_name, price, quantity, order_id'),
       ]);
+      const countedOrders = (orders || []).filter(isCountedRevenueOrder);
+      const countedOrderIds = new Set(countedOrders.map((order) => order.id));
+      const countedItems = (orderItems || []).filter((item) => countedOrderIds.has(item.order_id));
 
-      const totalRevenue = (orders || []).reduce((s, o) => s + Number(o.total), 0);
+      const totalRevenue = countedOrders.reduce((s, o) => s + Number(o.total), 0);
       setTotals({
         revenue: totalRevenue,
-        orders: orders?.length || 0,
+        orders: countedOrders.length,
         customers: customers?.length || 0,
         products: products?.length || 0,
-        avgOrder: orders?.length ? totalRevenue / orders.length : 0,
+        avgOrder: countedOrders.length ? totalRevenue / countedOrders.length : 0,
       });
 
       // Monthly sales (last 12 months)
@@ -43,27 +48,38 @@ export function AdminAnalyticsPage() {
       for (let i = 11; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const label = d.toLocaleDateString('en-US', { month: 'short' });
-        const mOrders = (orders || []).filter((o) => { const od = new Date(o.created_at); return od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear(); });
+        const mOrders = countedOrders.filter((o) => { const od = new Date(o.created_at); return od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear(); });
         months.push({ date: label, sales: mOrders.reduce((s, o) => s + Number(o.total), 0), orders: mOrders.length });
       }
       setSalesData(months);
 
       // Monthly revenue + profit
-      const revMonths = months.map((m) => ({ month: m.date, revenue: m.sales, profit: m.sales * 0.35 }));
+      const revMonths = months.map((m) => ({ month: m.date, revenue: m.sales, estimatedProfit: estimatedProfitFromRevenue(m.sales) }));
       setMonthlyRevenue(revMonths);
 
       // Category performance
       const catMap: Record<string, { value: number; revenue: number }> = {};
-      (products || []).forEach((p) => {
+      const productMap = new Map((products || []).map((product) => [product.id, product]));
+      countedItems.forEach((item) => {
+        const p = productMap.get(item.product_id);
+        if (!p) return;
         const catName = (p as any).category?.name || 'Uncategorized';
         if (!catMap[catName]) catMap[catName] = { value: 0, revenue: 0 };
-        catMap[catName].value++;
-        catMap[catName].revenue += Number(p.discount_price || p.price) * Math.max(1, p.review_count);
+        catMap[catName].value += Number(item.quantity);
+        catMap[catName].revenue += Number(item.price) * Number(item.quantity);
       });
       setCategoryData(Object.entries(catMap).map(([name, v]) => ({ name, value: v.value, revenue: v.revenue })));
 
-      // Top products by review count (proxy for sales)
-      const top = [...(products || [])].sort((a, b) => b.review_count - a.review_count).slice(0, 8).map((p) => ({ name: p.name.slice(0, 20), sales: p.review_count, revenue: Number(p.discount_price || p.price) * p.review_count }));
+      // Top products by paid order-item quantities, excluding cancelled/returned orders.
+      const productSales: Record<string, { name: string; sales: number; revenue: number }> = {};
+      countedItems.forEach((item) => {
+        const key = item.product_id || item.product_name;
+        const current = productSales[key] || { name: item.product_name, sales: 0, revenue: 0 };
+        current.sales += Number(item.quantity);
+        current.revenue += Number(item.price) * Number(item.quantity);
+        productSales[key] = current;
+      });
+      const top = Object.values(productSales).sort((a, b) => b.sales - a.sales).slice(0, 8);
       setTopProducts(top);
 
       // Customer growth
@@ -129,7 +145,7 @@ export function AdminAnalyticsPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         {/* Revenue vs profit */}
         <div className="rounded-xl border border-ink-100 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-ink-900">Revenue vs Profit</h2>
+          <h2 className="mb-4 text-lg font-semibold text-ink-900">Revenue vs Estimated Profit</h2>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={monthlyRevenue}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ededf0" />
@@ -138,7 +154,7 @@ export function AdminAnalyticsPage() {
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="revenue" name="Revenue" fill="#1a1a1a" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="profit" name="Profit" fill="#708238" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="estimatedProfit" name="Estimated Profit" fill="#708238" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -27,8 +27,8 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
       <div className="relative overflow-visible rounded-xl bg-ink-50">
         <Link to={`/product/${product.id}`} className="block overflow-hidden rounded-xl">
           <div className="relative aspect-[3/4] overflow-hidden">
-            <img src={primaryImage || undefined} alt={product.name} loading="lazy" className={cn('h-full w-full object-cover transition-transform duration-700 group-hover:scale-105', outOfStock && 'opacity-60')} />
-            {secondaryImage && <img src={secondaryImage} alt={product.name} loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
+            <img src={primaryImage || undefined} alt={product.name} loading="lazy" width="600" height="800" className={cn('h-full w-full object-cover transition-transform duration-700 group-hover:scale-105', outOfStock && 'opacity-60')} />
+            {secondaryImage && <img src={secondaryImage} alt={product.name} loading="lazy" width="600" height="800" className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
           </div>
         </Link>
 
