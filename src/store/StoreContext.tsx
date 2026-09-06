@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import type { CartItem, Product } from '@/types';
 import { effectivePrice } from '@/types';
 import { resolveProductImageUrl, supabase } from '@/lib/supabase';
@@ -55,6 +55,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [customerName, setCustomerName] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCouponState] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const pendingWishlistUpdates = useRef(new Set<string>());
 
   useEffect(() => {
     try {
@@ -104,10 +105,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const missingIds = mergedWishlist.filter((id) => !databaseWishlist.includes(id));
 
       if (missingIds.length > 0) {
-        const { error: mergeError } = await supabase.from('wishlist').insert(
-          missingIds.map((productId) => ({ customer_email: normalizedEmail, product_id: productId }))
+        const { error: mergeError } = await supabase.from('wishlist').upsert(
+          missingIds.map((productId) => ({ customer_email: normalizedEmail, product_id: productId })),
+          { onConflict: 'customer_email,product_id', ignoreDuplicates: true }
         );
-        if (mergeError && mergeError.code !== '23505') return;
+        if (mergeError) return;
       }
 
       if (cancelled) return;
@@ -221,24 +223,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleWishlist = useCallback(async (productId: string) => {
-    setWishlist((prev) => {
-      const next = prev.includes(productId)
-        ? prev.filter((id) => id !== productId)
-        : [...prev, productId];
-      if (!customerEmail) localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
-      return next;
-    });
-    if (customerEmail) {
-      const normalizedEmail = customerEmail.trim().toLowerCase();
-      const { error } = wishlist.includes(productId)
-        ? await supabase.from('wishlist').delete().eq('customer_email', normalizedEmail).eq('product_id', productId)
-        : await supabase.from('wishlist').insert({ customer_email: normalizedEmail, product_id: productId });
-      if (error && error.code !== '23505') {
-        setWishlist((prev) => prev.includes(productId)
-          ? prev.filter((id) => id !== productId)
-          : [...prev, productId]);
-      }
+    if (pendingWishlistUpdates.current.has(productId)) return;
+
+    const normalizedEmail = customerEmail?.trim().toLowerCase();
+    const wasInWishlist = wishlist.includes(productId);
+    const nextWishlist = wasInWishlist
+      ? wishlist.filter((id) => id !== productId)
+      : [...wishlist, productId];
+
+    pendingWishlistUpdates.current.add(productId);
+    setWishlist(nextWishlist);
+
+    if (!normalizedEmail) {
+      localStorage.setItem(WISHLIST_KEY, JSON.stringify(nextWishlist));
+      pendingWishlistUpdates.current.delete(productId);
+      return;
     }
+
+    const { error } = wasInWishlist
+      ? await supabase.from('wishlist').delete()
+        .eq('customer_email', normalizedEmail)
+        .eq('product_id', productId)
+      : await supabase.from('wishlist').upsert(
+        { customer_email: normalizedEmail, product_id: productId },
+        { onConflict: 'customer_email,product_id', ignoreDuplicates: true }
+      );
+
+    if (error) setWishlist((current) => {
+      const restored = wasInWishlist
+        ? [...new Set([...current, productId])]
+        : current.filter((id) => id !== productId);
+      return restored;
+    });
+
+    pendingWishlistUpdates.current.delete(productId);
   }, [customerEmail, wishlist]);
 
   const isInWishlist = useCallback((productId: string) => wishlist.includes(productId), [wishlist]);
