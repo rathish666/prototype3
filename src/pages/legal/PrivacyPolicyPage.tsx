@@ -12,7 +12,7 @@ export function PrivacyPolicyPage() {
       <ul>
         <li>Contact details you provide at checkout or registration: name, email, phone number, delivery address.</li>
         <li>Order information: items purchased, order value, order history.</li>
-        <li>Payment information: we never see or store your card, UPI, or bank details — these are entered directly on Razorpay's secure payment page and handled entirely by Razorpay, a PCI-DSS compliant payment processor.</li>
+        <li>Payment information: we never see or store your UPI or bank details — these are entered directly on YOUPI PG's secure payment page and handled by the payment gateway.</li>
         <li>Basic usage data such as pages visited, to help us improve the site.</li>
       </ul>
 
@@ -27,7 +27,7 @@ export function PrivacyPolicyPage() {
       <h2>Sharing Your Information</h2>
       <p>
         We share the minimum information necessary with trusted third parties to operate our
-        store: Razorpay (payment processing), Meta/WhatsApp Business Platform (order
+        store: YOUPI PG (payment processing), Meta/WhatsApp Business Platform (order
         notifications to our team), and Supabase (secure database hosting). We do not sell your
         personal information to anyone.
       </p>

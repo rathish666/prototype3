@@ -43,7 +43,7 @@ export function HomePage() {
     return () => clearInterval(timer);
   }, [banners.length]);
 
-  const heroBanner = banners[0] || {
+  const heroBanner = banners[currentBanner] || {
     title: 'Autumn Collection 2026',
     subtitle: 'Refined essentials for the modern gentleman.',
     image: 'https://images.pexels.com/photos/10482937/pexels-photo-10482937.jpeg?auto=compress&cs=tinysrgb&h=1200&w=1600',
@@ -185,7 +185,7 @@ export function HomePage() {
               <div className="col-span-full text-center text-ink-500">No reviews yet.</div>
             ) : (
               reviews.map((review, i) => (
-                <div key={review.id} className="rounded-xl border border-ink-100 bg-white p-6 animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+                <div key={review.id} className="rounded-xl border border-ink-100 bg-white p-6">
                   <Quote size={24} className="text-accent-400" />
                   <div className="mt-3 flex items-center gap-1">
                     {Array.from({ length: 5 }).map((_, n) => (

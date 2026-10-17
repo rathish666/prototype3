@@ -23,7 +23,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   const secondaryImage = resolveProductImageUrl(product.images?.[1]?.url);
 
   return (
-    <div className="group animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
+    <div className="group">
       <div className="relative overflow-visible rounded-xl bg-ink-50">
         <Link to={`/product/${product.id}`} className="block overflow-hidden rounded-xl">
           <div className="relative aspect-[3/4] overflow-hidden">

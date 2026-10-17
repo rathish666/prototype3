@@ -14,6 +14,7 @@ function productCacheKey(options?: Parameters<typeof useProducts>[0]) {
 
 export function useProducts(options?: {
   category?: string;
+  ids?: string[];
   featured?: boolean;
   bestSeller?: boolean;
   limit?: number;
@@ -46,10 +47,11 @@ export function useProducts(options?: {
         .select(`
         *,
         images:product_images(*),
-        category:categories(*),
         variants:product_variants(*)
       `);
 
+      if (options?.ids && options.ids.length === 0) return [];
+      if (options?.ids) query = query.in('id', options.ids);
       if (options?.category) {
         const { data: cat } = await supabase.from('categories').select('id').eq('slug', options.category).maybeSingle();
         if (cat) query = query.eq('category_id', cat.id);
@@ -71,7 +73,7 @@ export function useProducts(options?: {
     productCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
     setProducts(data);
     setLoading(false);
-  }, [options?.category, options?.featured, options?.bestSeller, options?.limit, options?.search, options?.newArrivals, options?.onSale]);
+  }, [options?.category, options?.ids, options?.featured, options?.bestSeller, options?.limit, options?.search, options?.newArrivals, options?.onSale]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   return { products, loading, refetch: fetchData };

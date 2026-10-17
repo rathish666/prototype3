@@ -6,12 +6,20 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 // ENVIRONMENT
 // ============================================================
 
-const baseUrl = (__ENV.BASE_URL || 'http://127.0.0.1:4174').replace(/\/$/, '');
+const baseUrl = (__ENV.BASE_URL || '').replace(/\/$/, '');
 const supabaseUrl = (__ENV.SUPABASE_URL || '').replace(/\/$/, '');
 const anonKey = __ENV.SUPABASE_ANON_KEY || '';
 
 const productId = __ENV.PRODUCT_ID || '';
 const variantId = __ENV.VARIANT_ID || '';
+const productIds = (__ENV.PRODUCT_IDS || productId)
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const variantIds = (__ENV.VARIANT_IDS || variantId)
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
 const variantSize = __ENV.VARIANT_SIZE || 'M';
 const variantColor = __ENV.VARIANT_COLOR || 'Black';
 
@@ -31,6 +39,10 @@ const customerAccountCount = Math.max(
   Number(__ENV.TEST_CUSTOMER_COUNT || 10)
 );
 
+const rampUpDuration = __ENV.RAMP_UP_DURATION || '1m';
+const holdDuration = __ENV.HOLD_DURATION || '18m';
+const rampDownDuration = __ENV.RAMP_DOWN_DURATION || '1m';
+
 // ============================================================
 // METRICS
 // ============================================================
@@ -42,6 +54,7 @@ const businessRequests = new Counter('business_requests');
 
 const loginFailures = new Rate('login_failures');
 const loginLatency = new Trend('login_latency');
+const wishlistFailures = new Rate('wishlist_failures');
 
 // ============================================================
 // K6 OPTIONS
@@ -55,9 +68,9 @@ export const options = {
       startVUs: 0,
 
       stages: [
-        { duration: '1m', target: Number(__ENV.VUS || 10) },
-        { duration: '3m', target: Number(__ENV.VUS || 10) },
-        { duration: '1m', target: 0 },
+        { duration: rampUpDuration, target: Number(__ENV.VUS || 10) },
+        { duration: holdDuration, target: Number(__ENV.VUS || 10) },
+        { duration: rampDownDuration, target: 0 },
       ],
 
       gracefulRampDown: '30s',
@@ -83,6 +96,10 @@ export const options = {
     ],
 
     login_failures: [
+      'rate<0.01',
+    ],
+
+    wishlist_failures: [
       'rate<0.01',
     ],
   },
@@ -222,7 +239,29 @@ function login(email, password, userType = 'customer') {
 // tokens during the load stages, avoiding an Auth login burst at ramp-up.
 // ============================================================
 
+function validateConfiguration() {
+  const missing = [];
+
+  if (!baseUrl) missing.push('BASE_URL');
+  if (!supabaseUrl) missing.push('SUPABASE_URL');
+  if (!anonKey) missing.push('SUPABASE_ANON_KEY');
+  if (!customerPassword) missing.push('TEST_CUSTOMER_PASSWORD');
+  if (!adminEmail) missing.push('TEST_ADMIN_EMAIL');
+  if (!adminPassword) missing.push('TEST_ADMIN_PASSWORD');
+  if (!productIds.length) missing.push('PRODUCT_IDS or PRODUCT_ID');
+  if (!variantIds.length) missing.push('VARIANT_IDS or VARIANT_ID');
+
+  if (missing.length) {
+    throw new Error(
+      `Missing k6 configuration: ${missing.join(', ')}. ` +
+      'Export these variables in the same shell as the k6 command.'
+    );
+  }
+}
+
 export function setup() {
+  validateConfiguration();
+
   const customerTokens = [];
   const setupInterval = Number(__ENV.AUTH_SETUP_INTERVAL || 2);
 
@@ -247,53 +286,115 @@ function getAdminToken(auth) {
 }
 
 // ============================================================
-// WISHLIST INSERT
+// PRODUCT/VARIANT POOL
 // ============================================================
 
-function wishlistInsert(token, email) {
+function pickProduct() {
+  if (!productIds.length) return null;
 
-  if (!supabaseUrl || !anonKey || !token || !productId) {
+  const productIndex = Math.floor(Math.random() * productIds.length);
+  const variantIndex = variantIds.length === productIds.length
+    ? productIndex
+    : variantIds.length > 1
+      ? Math.floor(Math.random() * variantIds.length)
+      : 0;
+
+  return {
+    productId: productIds[productIndex],
+    variantId: variantIds[variantIndex] || '',
+  };
+}
+
+// ============================================================
+// WISHLIST TOGGLE
+// ============================================================
+
+function logWishlistFailure(response, email, selectedProduct, action, token) {
+  let errorCode = '';
+  let errorMessage = '';
+
+  try {
+    const errorBody = response.json();
+    errorCode = errorBody?.code || '';
+    errorMessage = errorBody?.message || '';
+  } catch (_) {
+    // The response may not contain JSON.
+  }
+
+  console.error(
+    `wishlist ${action} failed | ` +
+    `status=${response.status} | ` +
+    `code=${errorCode} | ` +
+    `message=${errorMessage} | ` +
+    `payload=${JSON.stringify({
+      customer_email: email.toLowerCase(),
+      product_id: selectedProduct.productId,
+    })} | ` +
+    `authenticated=${Boolean(token)}`
+  );
+}
+
+function wishlistToggle(token, email) {
+  const selectedProduct = pickProduct();
+  const action = Math.random() < 0.70 ? 'add' : 'remove';
+
+  if (!supabaseUrl || !anonKey || !token || !selectedProduct) {
     return;
   }
 
-  const response = http.post(
-    `${supabaseUrl}/rest/v1/wishlist?on_conflict=customer_email,product_id`,
+  const query =
+    `customer_email=eq.${encodeURIComponent(email.toLowerCase())}` +
+    `&product_id=eq.${selectedProduct.productId}`;
+  const response = action === 'add'
+    ? http.post(
+      `${supabaseUrl}/rest/v1/wishlist?on_conflict=customer_email,product_id`,
 
-    JSON.stringify({
-      customer_email: email.toLowerCase(),
-      product_id: productId,
-    }),
+      JSON.stringify({
+        customer_email: email.toLowerCase(),
+        product_id: selectedProduct.productId,
+      }),
 
-    {
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+      {
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
 
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      },
+          Prefer: 'resolution=ignore-duplicates,return=minimal',
+        },
 
-      responseCallback: http.expectedStatuses(
-        200,
-        201,
-        204,
-        409
-      ),
+        tags: {
+          name: 'wishlist_add',
+        },
+      }
+    )
+    : http.del(
+      `${supabaseUrl}/rest/v1/wishlist?${query}`,
+      null,
+      {
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${token}`,
+        },
 
-      tags: {
-        name: 'wishlist_insert',
-      },
-    }
-  );
+        tags: {
+          name: 'wishlist_remove',
+        },
+      }
+    );
 
   businessRequests.add(1);
 
+  const success = response.status >= 200 && response.status < 300;
+  wishlistFailures.add(!success);
+
   check(response, {
-    'wishlist write succeeds':
-      (r) =>
-        (r.status >= 200 && r.status < 300) ||
-        r.status === 409,
+    'wishlist toggle succeeds': () => success,
   });
+
+  if (!success) {
+    logWishlistFailure(response, email, selectedProduct, action, token);
+  }
 }
 
 // ============================================================
@@ -301,12 +402,13 @@ function wishlistInsert(token, email) {
 // ============================================================
 
 function checkoutCreate(token, customerEmail) {
+  const selectedProduct = pickProduct();
 
   if (
     !supabaseUrl ||
     !anonKey ||
-    !productId ||
-    !variantId
+    !selectedProduct?.productId ||
+    !selectedProduct?.variantId
   ) {
     return;
   }
@@ -336,9 +438,9 @@ function checkoutCreate(token, customerEmail) {
 
       items: [
         {
-          product_id: productId,
+          product_id: selectedProduct.productId,
 
-          variant_id: variantId,
+          variant_id: selectedProduct.variantId,
 
           size: variantSize,
 
@@ -531,10 +633,11 @@ export default function (auth) {
   // ----------------------------------------------------------
 
   else if (bucket < 0.70) {
+    const selectedProduct = pickProduct();
 
     browserGet(
-      productId
-        ? `/product/${productId}`
+      selectedProduct
+        ? `/product/${selectedProduct.productId}`
         : '/shop',
 
       'product_detail'
@@ -543,12 +646,12 @@ export default function (auth) {
     if (
       supabaseUrl &&
       anonKey &&
-      productId
+      selectedProduct
     ) {
 
       supabaseGet(
         `/rest/v1/products?` +
-        `id=eq.${productId}` +
+        `id=eq.${selectedProduct.productId}` +
         '&select=id,name,price,discount_price',
 
         'product_detail_data'
@@ -571,7 +674,7 @@ export default function (auth) {
     const token =
       getCustomerToken(auth);
 
-    if (token && productId) {
+    if (token && productIds.length) {
 
       supabaseGet(
         `/rest/v1/wishlist?` +
@@ -585,7 +688,7 @@ export default function (auth) {
         token
       );
 
-      wishlistInsert(
+      wishlistToggle(
         token,
         customerEmail
       );

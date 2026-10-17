@@ -126,6 +126,7 @@ export function AdminOrdersPage() {
               <Badge variant={selectedOrder.whatsapp_sent ? 'success' : 'warning'}>
                 WhatsApp alert: {selectedOrder.whatsapp_sent ? 'sent' : 'not sent'}
               </Badge>
+              {selectedOrder.youpi_payment_id && <span className="text-ink-400">YOUPI payment ID: {selectedOrder.youpi_payment_id}</span>}
               {selectedOrder.razorpay_payment_id && <span className="text-ink-400">Razorpay payment ID: {selectedOrder.razorpay_payment_id}</span>}
             </div>
 

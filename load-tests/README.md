@@ -47,6 +47,8 @@ export TEST_ADMIN_EMAIL=k6-admin@example.com
 export TEST_ADMIN_PASSWORD=<staging-admin-password>
 ```
 
+These variables must be exported in the same shell that runs `k6`. The script does not automatically load `.env`. It fails during `setup()` if any required value is missing, before generating misleading HTTP failure metrics.
+
 The anon key is intended for browser use, but test credentials and passwords must remain private. The script does not need or accept a Supabase service-role key, Razorpay secret, or webhook secret.
 
 ## Progressive tests
@@ -63,7 +65,15 @@ VUS=200 k6 run load-tests/k6-commerce.js
 VUS=500 k6 run load-tests/k6-commerce.js
 ```
 
-Each run ramps from zero to the target over one minute, holds for three minutes, and ramps down over one minute. Do not jump to 500 until the lower stage passes.
+By default, each run ramps from zero to the target over one minute, holds for 18 minutes, and ramps down over one minute (20 minutes total). Override `RAMP_UP_DURATION`, `HOLD_DURATION`, and `RAMP_DOWN_DURATION` when a different duration is needed. Do not jump to 500 until the lower stage passes.
+
+For example, a 150-VU run held for 20 minutes:
+
+```bash
+VUS=150 HOLD_DURATION=20m \
+	k6 run --summary-export=load-tests/results/150-vus-20m.json \
+	load-tests/k6-commerce.js
+```
 
 ## Scenarios covered
 

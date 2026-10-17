@@ -7,7 +7,7 @@ import { ProductCardSkeleton, EmptyState, Button } from '@/components/ui';
 
 export function WishlistPage() {
   const { wishlist } = useStore();
-  const { products, loading } = useProducts({ limit: 100 });
+  const { products, loading } = useProducts({ ids: wishlist });
 
   const wishlistProducts = products.filter((p) => wishlist.includes(p.id));
 

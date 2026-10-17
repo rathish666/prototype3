@@ -249,12 +249,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         { onConflict: 'customer_email,product_id', ignoreDuplicates: true }
       );
 
-    if (error) setWishlist((current) => {
-      const restored = wasInWishlist
-        ? [...new Set([...current, productId])]
-        : current.filter((id) => id !== productId);
-      return restored;
-    });
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.error('Wishlist write failed', {
+          action: wasInWishlist ? 'remove' : 'add',
+          status: 'status' in error ? error.status : 'unknown',
+          code: error.code ?? 'unknown',
+          message: error.message,
+          payload: { customer_email: normalizedEmail, product_id: productId },
+        });
+      }
+
+      setWishlist((current) => {
+        const restored = wasInWishlist
+          ? [...new Set([...current, productId])]
+          : current.filter((id) => id !== productId);
+        return restored;
+      });
+    }
 
     pendingWishlistUpdates.current.delete(productId);
   }, [customerEmail, wishlist]);

@@ -24,7 +24,7 @@ export function RefundPolicyPage() {
         approved:
       </p>
       <ul>
-        <li>Online payments (Razorpay) are refunded to the original payment method, typically within 5–7 business days.</li>
+        <li>Online payments (YOUPI PG UPI payments) are refunded according to the payment gateway and bank processing timelines.</li>
         <li>Cash on Delivery orders are refunded via bank transfer or UPI — we'll ask for your details when processing the return.</li>
       </ul>
 
@@ -42,8 +42,7 @@ export function RefundPolicyPage() {
 
       <p className="mt-8 rounded-lg border border-ink-100 bg-ink-50 p-4 text-xs text-ink-500">
         Template policy — adjust the return window, conditions, and refund timelines to match
-        your actual operations before going live. Razorpay requires this page to be live on your
-        site before activating a live account.
+        your actual operations before going live.
       </p>
     </LegalPageLayout>
   );

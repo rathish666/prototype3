@@ -94,6 +94,7 @@ export interface Order {
   payment_status?: string;
   razorpay_order_id?: string | null;
   razorpay_payment_id?: string | null;
+  youpi_payment_id?: string | null;
   whatsapp_sent?: boolean;
   whatsapp_error?: string | null;
   created_at: string;

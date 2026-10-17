@@ -8,7 +8,24 @@ import { formatPrice } from '@/types';
 import type { Coupon } from '@/types';
 import { cn } from '@/lib/utils';
 
-declare const Razorpay: any;
+declare global {
+  interface Window {
+    Youpi?: { pay: (options: Record<string, unknown>) => Promise<unknown> };
+  }
+}
+
+async function loadYoupiSdk() {
+  if (window.Youpi) return;
+  const portalUrl = import.meta.env.VITE_YOUPI_CHECKOUT_URL;
+  if (!portalUrl) return;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `${portalUrl.replace(/\/+$/, '')}/youpi.js`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load the YOUPI checkout'));
+    document.head.appendChild(script);
+  });
+}
 
 export function CheckoutPage() {
   const { cart, cartSubtotal, clearCart, appliedCoupon, customerEmail, customerName, showToast } = useStore();
@@ -16,7 +33,6 @@ export function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [shippingMethod, setShippingMethod] = useState('Standard');
-  const [paymentMethod] = useState<'Razorpay'>('Razorpay');
   const [form, setForm] = useState({
     name: customerName || '',
     email: customerEmail || '',
@@ -92,27 +108,12 @@ export function CheckoutPage() {
     if (!validate()) { showToast('Please fix the errors below', 'error'); return; }
     setLoading(true);
     try {
-      const { data: createRes, error: createErr } = await supabase.functions.invoke('razorpay-create-order', { body: buildRequestBody() });
+      const { data: createRes, error: createErr } = await supabase.functions.invoke('youpi-create-payment', { body: buildRequestBody() });
       if (createErr || createRes?.error) throw new Error(createRes?.error || createErr?.message || 'Could not start checkout');
-
-      const rzp = new Razorpay({
-        key: createRes.razorpayKeyId,
-        amount: createRes.amount,
-        currency: createRes.currency,
-        order_id: createRes.razorpayOrderId,
-        name: 'Maison Co.',
-        description: `Order ${createRes.orderNumber}`,
-        prefill: { name: form.name, email: form.email, contact: form.phone },
-        theme: { color: '#111111' },
-        handler: async (response: any) => {
+      await loadYoupiSdk();
+      const confirmPayment = async () => {
           try {
-            const { data: verifyRes, error: verifyErr } = await supabase.functions.invoke('razorpay-verify-payment', {
-              body: {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              },
-            });
+            const { data: verifyRes, error: verifyErr } = await supabase.functions.invoke('youpi-confirm-payment', { body: { paymentId: createRes.paymentId } });
             if (verifyErr || verifyRes?.error) {
               showToast('Payment succeeded but confirmation failed — contact support with your payment ID.', 'error');
               setLoading(false);
@@ -130,19 +131,24 @@ export function CheckoutPage() {
             showToast('Payment succeeded but confirmation failed — contact support with your payment ID.', 'error');
             setLoading(false);
           }
-        },
-        modal: {
-          ondismiss: () => {
-            // Customer closed the widget without paying — order row stays "Pending"/"pending".
-            setLoading(false);
-          },
-        },
+      };
+      if (!window.Youpi) {
+        window.location.assign(createRes.checkoutUrl);
+        return;
+      }
+      await window.Youpi.pay({
+        checkoutUrl: createRes.checkoutUrl,
+        paymentId: createRes.paymentId,
+        order_id: createRes.orderNumber,
+        amount: total,
+        currency: 'INR',
+        customer: { name: form.name, email: form.email, phone: form.phone },
+        onSuccess: confirmPayment,
+        handler: confirmPayment,
+        onFailed: () => { showToast('Payment failed. Please try again.', 'error'); setLoading(false); },
+        onCancelled: () => setLoading(false),
+        onClose: () => setLoading(false),
       });
-      rzp.on('payment.failed', () => {
-        showToast('Payment failed. Please try again.', 'error');
-        setLoading(false);
-      });
-      rzp.open();
     } catch (err: any) {
       showToast(err?.message || 'Failed to place order. Please try again.', 'error');
       setLoading(false);
@@ -260,14 +266,14 @@ export function CheckoutPage() {
                 </div>
                 <ShieldCheck size={20} className="shrink-0 text-ink-600" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-ink-900">Card / UPI / Netbanking</p>
-                  <p className="text-xs text-ink-500">Secure checkout powered by Razorpay</p>
+                  <p className="text-sm font-medium text-ink-900">UPI payment</p>
+                  <p className="text-xs text-ink-500">Secure checkout powered by YOUPI PG</p>
                 </div>
               </div>
             </div>
             <p className="mt-4 flex items-start gap-2 text-xs text-ink-500">
               <ShieldCheck size={14} className="mt-0.5 shrink-0 text-success-600" />
-              You'll enter your card, UPI, or bank details on Razorpay's secure payment screen — we never see or store them.
+              You'll complete payment on YOUPI PG's secure checkout screen — we never see or store your UPI credentials.
             </p>
           </section>
         </div>

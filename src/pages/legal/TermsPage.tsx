@@ -17,7 +17,7 @@ export function TermsPage() {
 
       <h2>Payment</h2>
       <p>
-        Online payments are processed securely by Razorpay. We verify every payment
+        Online payments are processed securely by YOUPI PG. We verify every payment
         server-side before an order is confirmed — your total is calculated from our live
         product prices at the time of payment, not from anything sent by your browser. Cash on
         Delivery orders are confirmed immediately and paid for at the time of delivery.
